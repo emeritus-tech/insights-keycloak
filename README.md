@@ -1,31 +1,21 @@
-![Keycloak](https://github.com/keycloak/keycloak-misc/blob/main/logo/logo.svg)
+# Keycloak
 
-![GitHub Release](https://img.shields.io/github/v/release/keycloak/keycloak?label=latest%20release)
-[![OpenSSF Best Practices](https://bestpractices.coreinfrastructure.org/projects/6818/badge)](https://bestpractices.coreinfrastructure.org/projects/6818)
-[![CLOMonitor](https://img.shields.io/endpoint?url=https://clomonitor.io/api/projects/cncf/keycloak/badge)](https://clomonitor.io/projects/cncf/keycloak)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/keycloak/keycloak/badge)](https://securityscorecards.dev/viewer/?uri=github.com/keycloak/keycloak)
-[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/keycloak-operator)](https://artifacthub.io/packages/olm/community-operators/keycloak-operator)
-![GitHub Repo stars](https://img.shields.io/github/stars/keycloak/keycloak?style=flat)
-![GitHub commit activity](https://img.shields.io/github/commit-activity/m/keycloak/keycloak)
-[![Translation status](https://hosted.weblate.org/widget/keycloak/svg-badge.svg)](docs/translation.md)
+Keycloak is an Open Source Identity and Access Management solution for modern Applications and Services.
 
-# Open Source Identity and Access Management
-
-Add authentication to applications and secure services with minimum effort. No need to deal with storing users or authenticating users.
-
-Keycloak provides user federation, strong authentication, user management, fine-grained authorization, and more.
+This repository contains the source code for the Keycloak Server, Java adapters and the JavaScript adapter.
 
 
 ## Help and Documentation
 
 * [Documentation](https://www.keycloak.org/documentation.html)
 * [User Mailing List](https://groups.google.com/d/forum/keycloak-user) - Mailing list for help and general questions about Keycloak
-* Join [#keycloak](https://cloud-native.slack.com/archives/C056HC17KK9) for general questions, or [#keycloak-dev](https://cloud-native.slack.com/archives/C056XU905S6) on Slack for design and development discussions, by creating an account at [https://slack.cncf.io/](https://slack.cncf.io/).
 
 
 ## Reporting Security Vulnerabilities
 
 If you have found a security vulnerability, please look at the [instructions on how to properly report it](https://github.com/keycloak/keycloak/security/policy).
+
+
 
 
 ## Reporting an issue
@@ -64,9 +54,8 @@ To write tests, refer to the [writing tests](docs/tests-development.md) guide.
 
 ## Contributing
 
-Before contributing to Keycloak, please read our [contributing guidelines](CONTRIBUTING.md). Participation in the Keycloak project is governed by the [CNCF Code of Conduct](https://github.com/cncf/foundation/blob/main/code-of-conduct.md).
+Before contributing to Keycloak, please read our [contributing guidelines](CONTRIBUTING.md).
 
-Joining a [community meeting](https://www.keycloak.org/community) is a great way to get involved and help shape the future of Keycloak.
 
 ## Other Keycloak Projects
 
@@ -77,4 +66,4 @@ Joining a [community meeting](https://www.keycloak.org/community) is a great way
 
 ## License
 
-* [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0)
+* [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0).
