@@ -13,7 +13,6 @@ ENV DB_NAME=$DB_NAME
 ENV KEYCLOAK_ADMIN=$KEYCLOAK_ADMIN
 ENV KEYCLOAK_ADMIN_PASSWORD=$KEYCLOAK_ADMIN_PASSWORD
 
-
 # Create a directory for Keycloak
 WORKDIR /app
 
@@ -24,4 +23,4 @@ COPY / /app/
 EXPOSE 8080
 
 # Command to start Keycloak
-CMD ["java", "-jar", "/app/quarkus/server/target/lib/quarkus-run.jar", "start", "--db", "mysql", "--db-username", "$DB_USERNAME", "--db-password", "$DB_PASSWORD", "--hostname", "$HOSTNAME", "--db-url-host", "$DB_HOST", "--proxy", "edge", "--db-url-database", "$DB_NAME", "--cache", "ispn", "--cache-stack", "kubernetes"]
+CMD ["java", "-jar", "--enable-preview", "/app/quarkus/server/target/lib/quarkus-run.jar", "start", "--spi-migration-strategy", "update", "--spi-datastore-legacy-allow-migrate-existing-database-to-snapshot", "true", "--db", "mysql", "--db-username", "$DB_USERNAME", "--db-password", "$DB_PASSWORD", "--hostname", "$HOSTNAME", "--db-url-host", "$DB_HOST", "--proxy-headers", "xforwarded", "--db-url-database", "$DB_NAME", "--cache", "ispn", "--cache-stack", "kubernetes"]

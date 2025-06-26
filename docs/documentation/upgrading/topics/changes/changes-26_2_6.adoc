@@ -1,0 +1,27 @@
+////
+
+== Breaking changes
+
+Breaking changes are identified as requiring changes from existing users to their configurations.
+
+////
+
+== Notable changes
+
+Notable changes where an internal behavior changed to prevent common misconfigurations, fix bugs or simplify running {project_name}.
+
+=== Upgrade procedure changed for the distribution
+
+If you are upgrading {project_name} by downloading the distribution, the upgrade procedure has been changed. Previously it recommended copying over the contents from the `conf/` folder from the old to the new installation.
+The new procedure recommends to re-apply any changes to `cache-ispn.xml` or a custom cache configuration based on the file included in the new version.
+
+This prevents accidentally downgrading functionality, for example, by using an old `cache-ispn.xml` file from a previous version.
+
+=== Problematic cache configurations ignored
+
+Previous versions of {project_name} warned about problematic configurations, for example, if a wrong number of owners was configured or a cache size was set when it should not have been set when enabling volatile user sessions.
+The docs also stated to update the `cache-ispn.xml` configuration file for volatile user sessions.
+
+The current version will always use safe settings for the number of owners and maximum cache size for the affected user and client session caches, and will log only an INFO message.
+With this behavior, there is no need any more to update the `cache-ispn.xml` configuration file.
+If you previously used a custom `cache-ispn.xml` in order to use volatile user sessions, we recommend reverting those changes and use the standard configuration file.

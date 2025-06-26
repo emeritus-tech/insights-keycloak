@@ -29,7 +29,6 @@ import org.apache.commons.lang3.ArrayUtils;
 import org.eclipse.microprofile.config.ConfigProvider;
 
 import org.keycloak.Config;
-import org.keycloak.quarkus.runtime.cli.Picocli;
 
 public class MicroProfileConfigProvider implements Config.ConfigProvider {
 
@@ -51,6 +50,11 @@ public class MicroProfileConfigProvider implements Config.ConfigProvider {
     @Override
     public String getProvider(String spi) {
         return scope(spi).get("provider");
+    }
+
+    @Override
+    public String getDefaultProvider(String spi) {
+        return scope(spi).get("provider.default");
     }
 
     @Override
