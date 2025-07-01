@@ -1,0 +1,8 @@
+"use strict";
+exports.__esModule = true;
+exports.c_notification_badge_after_BackgroundColor = {
+  "name": "--pf-v5-c-notification-badge--after--BackgroundColor",
+  "value": "#c9190b",
+  "var": "var(--pf-v5-c-notification-badge--after--BackgroundColor)"
+};
+exports["default"] = exports.c_notification_badge_after_BackgroundColor;
