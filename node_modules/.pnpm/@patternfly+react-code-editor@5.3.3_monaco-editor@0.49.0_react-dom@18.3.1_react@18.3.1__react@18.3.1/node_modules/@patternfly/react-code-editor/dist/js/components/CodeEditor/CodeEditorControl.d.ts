@@ -1,0 +1,21 @@
+import * as React from 'react';
+import { ButtonProps } from '@patternfly/react-core';
+/** Allows customizing the code editor controls by passing this sub-component into the
+ * code editor's customControl property.
+ */
+export interface CodeEditorControlProps extends Omit<ButtonProps, 'onClick'> {
+    /** Accessible label for the code editor control */
+    'aria-label'?: string;
+    /** Additional classes added to the code editor control. */
+    className?: string;
+    /** Icon rendered inside the code editor control. */
+    icon: React.ReactNode;
+    /** Event handler for the click of the button */
+    onClick: (code: string, event?: any) => void;
+    /** Flag indicating that the button is visible above the code editor. */
+    isVisible?: boolean;
+    /** Additional tooltip props forwarded to the Tooltip component */
+    tooltipProps?: any;
+}
+export declare const CodeEditorControl: React.FunctionComponent<CodeEditorControlProps>;
+//# sourceMappingURL=CodeEditorControl.d.ts.map
