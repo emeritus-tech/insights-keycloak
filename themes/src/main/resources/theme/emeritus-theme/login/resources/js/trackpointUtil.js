@@ -18,9 +18,11 @@ window.onCookieJsLoad = function ({basePath, screenName, realm}) {
       app: realm
     })
   );
+  // Load trackpoint script
   var trackpointScript = document.createElement("script");
-  trackpointScript.type = "module";
   trackpointScript.src = "https://d2ywvfgjza5nzm.cloudfront.net/trackpoint.js";
+  trackpointScript.defer = true;
+  trackpointScript.async = true;
   document.head.appendChild(trackpointScript);
 };
 
