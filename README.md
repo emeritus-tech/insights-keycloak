@@ -76,7 +76,6 @@ Joining a [community meeting](https://www.keycloak.org/community) is a great way
 * [Keycloak QuickStarts](https://github.com/keycloak/keycloak-quickstarts) - QuickStarts for getting started with Keycloak
 * [Keycloak Node.js Connect](https://github.com/keycloak/keycloak-nodejs-connect) - Node.js adapter for Keycloak
 
-
 ## License 
 
 * [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0).
