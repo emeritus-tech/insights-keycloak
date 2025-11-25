@@ -1,5 +1,5 @@
-# Use a base image with Java 20 and other dependencies
-FROM openjdk:20-jdk-slim
+# Use a base image with Java 21 and other dependencies
+FROM eclipse-temurin:21
 
 # Set the Keycloak version and other environment variables as needed
 ENV KC_HOSTNAME_STRICT=$KC_HOSTNAME_STRICT
