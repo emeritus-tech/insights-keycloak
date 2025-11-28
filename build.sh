@@ -25,8 +25,7 @@ export PATH=$JAVA_HOME/bin:$PATH
 echo "--2-- $(which javac)"
 echo "--3-- $(readlink -f $( which javac ))"
 
-# Skip proto lock check for development builds (network/proxy issues)
-./mvnw -pl quarkus/deployment,quarkus/dist,themes, -am -DskipTests -DskipProtoLock=true clean install | tee log-$(date +%H-%M-%y-%m-%d).txt
+./mvnw -pl quarkus/deployment,quarkus/dist,themes, -am -DskipTests clean install | tee log-$(date +%H-%M-%y-%m-%d).txt
 
 echo "Running build command for MSQL database"
 
