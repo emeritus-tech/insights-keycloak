@@ -118,6 +118,8 @@
                             <div class="${properties.kcFormOptionsWrapperClass!}">
                                 <#if realm.resetPasswordAllowed>
                                     <span><a tabindex="5" href="${url.loginResetCredentialsUrl}">${msg("doForgotPassword")}</a></span>
+                                <#else>
+                                    <span><a tabindex="5" href="mailto:${msg("contactUsEmail")}">${msg("contactUsForPasswordReset")}</a></span>
                                 </#if>
                             </div>
 
