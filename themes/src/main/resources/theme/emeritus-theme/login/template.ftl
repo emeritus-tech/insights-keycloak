@@ -34,14 +34,19 @@
             <script src="${script}" type="text/javascript"></script>
         </#list>
     </#if>
+    <script type="module">
+        import { startSessionPolling } from "${url.resourcesPath}/js/authChecker.js";
+
+        startSessionPolling(
+            "${url.ssoLoginInOtherTabsUrl?no_esc}"
+        );
+    </script>
     <#if authenticationSession??>
         <script type="module">
-            import { checkCookiesAndSetTimer } from "${url.resourcesPath}/js/authChecker.js";
+            import { checkAuthSession } from "${url.resourcesPath}/js/authChecker.js";
 
-            checkCookiesAndSetTimer(
-              "${authenticationSession.authSessionId}",
-              "${authenticationSession.tabId}",
-              "${url.ssoLoginInOtherTabsUrl}"
+            checkAuthSession(
+                "${authenticationSession.authSessionIdHash}"
             );
         </script>
     </#if>
