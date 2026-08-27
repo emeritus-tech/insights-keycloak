@@ -392,6 +392,16 @@ public class Picocli {
         }
     }
 
+    static boolean timestampChanged(String oldValue, String newValue) {
+        if (newValue != null && oldValue != null) {
+            long longNewValue = Long.valueOf(newValue);
+            long longOldValue = Long.valueOf(oldValue);
+            // docker commonly truncates to the second at runtime, so we'll allow that special case
+            return ((longNewValue / 1000) * 1000) != longNewValue || ((longOldValue / 1000) * 1000) != longNewValue;
+        }
+        return true;
+    }
+
     private void validateProperty(AbstractCommand abstractCommand, IncludeOptions options,
             final List<String> ignoredRunTime, final Set<String> disabledBuildTime, final Set<String> disabledRunTime,
             final Set<String> deprecatedInUse, final Set<String> missingOption,

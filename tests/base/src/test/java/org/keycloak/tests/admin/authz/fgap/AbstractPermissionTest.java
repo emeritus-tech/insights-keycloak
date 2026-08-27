@@ -249,4 +249,8 @@ public abstract class AbstractPermissionTest {
             return group;
         }
     }
+
+    protected ScopePermissionRepresentation createGroupPermission(GroupRepresentation group, Set<String> scopes, UserPolicyRepresentation... policies) {
+        return createPermission(client, group.getId(), AdminPermissionsSchema.GROUPS_RESOURCE_TYPE, scopes, policies);
+    }
 }

@@ -17,6 +17,7 @@
 
 package org.keycloak.testsuite.forms;
 
+import org.keycloak.testsuite.AbstractChangeImportedUserPasswordsTest;
 import org.keycloak.representations.idm.AuthenticationFlowRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.testsuite.AbstractChangeImportedUserPasswordsTest;

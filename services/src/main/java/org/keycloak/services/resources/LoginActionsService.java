@@ -1218,6 +1218,7 @@ public class LoginActionsService {
 
         Response response;
 
+        boolean cancelled = false;
         if (isCancelAppInitiatedAction(factory.getId(), authSession, context)) {
             provider.initiatedActionCanceled(session, authSession);
             AuthenticationManager.setKcActionStatus(factory.getId(), RequiredActionContext.KcActionStatus.CANCELLED, authSession);

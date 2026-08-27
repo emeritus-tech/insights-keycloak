@@ -74,6 +74,7 @@ import org.keycloak.testsuite.client.policies.AbstractClientPoliciesTest;
 import org.keycloak.testsuite.pages.ConsentPage;
 import org.keycloak.testsuite.services.clientpolicy.executor.TestRaiseExceptionExecutorFactory;
 import org.keycloak.testsuite.updaters.ClientAttributeUpdater;
+import org.keycloak.testsuite.updaters.RealmAttributeUpdater;
 import org.keycloak.testsuite.updaters.ProtocolMappersUpdater;
 import org.keycloak.testsuite.updaters.RealmAttributeUpdater;
 import org.keycloak.testsuite.updaters.RoleScopeUpdater;
@@ -432,6 +433,27 @@ public abstract class StandardTokenExchangeV2Test extends AbstractClientPolicies
             exchangedTokenString = response.getAccessToken();
             exchangedToken = TokenVerifier.create(exchangedTokenString, AccessToken.class).parse().getToken();
             assertTrue(exchangedToken.isActive(), "Exchanged token is not active");
+            assertEquals(getSessionIdFromToken(accessToken), exchangedToken.getSessionId());
+            assertEquals("requester-client", exchangedToken.getIssuedFor());
+            assertAccessTokenContext(exchangedToken.getId(), AccessTokenContext.SessionType.OFFLINE_TRANSIENT_CLIENT,
+                    AccessTokenContext.TokenType.REGULAR, OAuth2Constants.TOKEN_EXCHANGE_GRANT_TYPE);
+
+            // assert introspection and user-info works
+            assertIntrospectSuccess(exchangedTokenString, "requester-client", "secret", john.getId());
+            assertUserInfoSuccess(exchangedTokenString, "requester-client", "secret", john.getId());
+
+            // move time to be more than the normal expired session value, refresh and request another exchange
+            setTimeOffset(610);
+            final AccessTokenResponse refreshResponse = oauth.client("subject-client", "secret").scope(null)
+                    .refreshRequest(initialResponse.getRefreshToken()).send();
+            assertNull("Error refreshing the initial token: " + refreshResponse.getErrorDescription(), refreshResponse.getError());
+            accessToken = refreshResponse.getAccessToken();
+            oauth.scope(OAuth2Constants.SCOPE_OPENID);
+            response = tokenExchange(accessToken, "requester-client", "secret", null, null);
+            assertNull("Error exchanging the token: " + response.getErrorDescription(), response.getError());
+            exchangedTokenString = response.getAccessToken();
+            exchangedToken = TokenVerifier.create(exchangedTokenString, AccessToken.class).parse().getToken();
+            assertTrue("Exchanged token is not active", exchangedToken.isActive());
             assertEquals(getSessionIdFromToken(accessToken), exchangedToken.getSessionId());
             assertEquals("requester-client", exchangedToken.getIssuedFor());
             assertAccessTokenContext(exchangedToken.getId(), AccessTokenContext.SessionType.OFFLINE_TRANSIENT_CLIENT,

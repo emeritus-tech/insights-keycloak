@@ -142,7 +142,7 @@ spec:
     # tag::keycloak[]
     - name: log-console-output
       value: json
-    - name: metrics-enabled # <5>
+    - name: metrics-enabled # <4>
       value: 'true'
     - name: event-metrics-user-enabled
       value: 'true'

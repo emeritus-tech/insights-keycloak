@@ -126,7 +126,7 @@ public class DefaultKeycloakSessionFactoryTest {
 
         @Override
         public Config.Scope scope(String... scope) {
-            return null;
+            return new Config.SystemPropertiesScope("dummy prefix");
         }
     }
 
