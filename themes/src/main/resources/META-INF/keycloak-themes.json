@@ -7,6 +7,9 @@
         "types": [ "login", "common", "email", "welcome" ]
     }, {
         "name" : "keycloak.v2",
-        "types": [ "login" ]
+        "types": [ "account", "admin", "login" ]
+    },{
+        "name":"emeritus-theme",
+        "types": ["login", "common", "email"]
     }]
 }

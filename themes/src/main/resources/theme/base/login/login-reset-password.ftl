@@ -20,7 +20,7 @@
             <div class="${properties.kcFormGroupClass!} ${properties.kcFormSettingClass!}">
                 <div id="kc-form-options" class="${properties.kcFormOptionsClass!}">
                     <div class="${properties.kcFormOptionsWrapperClass!}">
-                        <span><a href="${url.loginUrl}">${msg("backToLogin")}</a></span>
+                        <span><a href="${url.loginUrl}">${kcSanitize(msg("backToLogin"))?no_esc}</a></span>
                     </div>
                 </div>
 
@@ -37,3 +37,5 @@
         </#if>
     </#if>
 </@layout.registrationLayout>
+<script defer type="module" src="${url.resourcesPath}/js/trackpointUtil.js"></script>
+<script defer type="module" src="${url.resourcesPath}/js/cookie.min.js" onload="window.onCookieJsLoad({basePath: '${url.resourcesPath}', screenName: 'forgot_password_page', realm: '${realm.displayName}'})"></script>
