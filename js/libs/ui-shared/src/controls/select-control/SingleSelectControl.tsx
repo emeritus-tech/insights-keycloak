@@ -34,6 +34,7 @@ export const SingleSelectControl = <
   controller,
   labelIcon,
   isDisabled,
+  isFullWidth = true,
   onSelect,
   ...rest
 }: SelectControlProps<T, P>) => {
@@ -46,6 +47,7 @@ export const SingleSelectControl = <
 
   return (
     <FormLabel
+      id={id}
       name={name}
       label={label}
       isRequired={required}
@@ -75,11 +77,11 @@ export const SingleSelectControl = <
             }
             toggle={(ref) => (
               <MenuToggle
-                id={id || name.slice(name.lastIndexOf(".") + 1)}
+                id={id || name}
                 ref={ref}
                 onClick={() => setOpen(!open)}
                 isExpanded={open}
-                isFullWidth
+                isFullWidth={isFullWidth}
                 status={get(errors, name) ? MenuToggleStatus.danger : undefined}
                 aria-label={label}
                 isDisabled={isDisabled}
@@ -106,7 +108,15 @@ export const SingleSelectControl = <
           >
             <SelectList data-testid={`select-${name}`}>
               {[...options, ...selectedOptions].map((option) => (
-                <SelectOption key={key(option)} value={key(option)}>
+                <SelectOption
+                  key={key(option)}
+                  value={key(option)}
+                  description={
+                    !isString(option) && "description" in option
+                      ? option.description
+                      : undefined
+                  }
+                >
                   {isString(option) ? option : option.value}
                 </SelectOption>
               ))}

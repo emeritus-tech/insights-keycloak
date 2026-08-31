@@ -17,6 +17,7 @@
 package org.keycloak.testsuite.pages;
 
 import org.keycloak.testsuite.util.UIUtils;
+
 import org.openqa.selenium.NoSuchElementException;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.FindBy;
@@ -46,6 +47,9 @@ public class LoginPasswordResetPage extends LanguageComboboxAwarePage {
 
     @FindBy(id = "kc-info-wrapper")
     private WebElement infoWrapper;
+
+    @FindBy(id = "kc-reset-password-form")
+    private WebElement formResetPassword;
 
     public void changePassword() {
         UIUtils.clickLink(submitButton);
@@ -96,5 +100,9 @@ public class LoginPasswordResetPage extends LanguageComboboxAwarePage {
         } catch (NoSuchElementException e) {
             return null;
         }
+    }
+
+    public String getFormUrl() {
+            return formResetPassword.getAttribute("action");
     }
 }

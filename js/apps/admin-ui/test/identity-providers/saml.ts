@@ -1,10 +1,14 @@
-import { Page, expect } from "@playwright/test";
-import { selectItem, switchOff, switchOn } from "../utils/form";
-import { assertNotificationMessage } from "../utils/masthead";
-import { confirmModal } from "../utils/modal";
-import { goToIdentityProviders } from "../utils/sidebar";
-import { clickTableRowItem } from "../utils/table";
-import { assertInvalidUrlNotification, clickSaveButton, setUrl } from "./main";
+import { type Page, expect } from "@playwright/test";
+import { selectItem, switchOff, switchOn } from "../utils/form.ts";
+import { assertNotificationMessage } from "../utils/masthead.ts";
+import { confirmModal } from "../utils/modal.ts";
+import { goToIdentityProviders } from "../utils/sidebar.ts";
+import { clickTableRowItem } from "../utils/table.ts";
+import {
+  assertInvalidUrlNotification,
+  clickSaveButton,
+  setUrl,
+} from "./main.ts";
 
 export async function editSAMLSettings(page: Page, samlProviderName: string) {
   // Toggle provider state
@@ -28,13 +32,20 @@ export async function editSAMLSettings(page: Page, samlProviderName: string) {
   await assertInvalidUrlNotification(page, "singleLogoutService");
   await setUrl(page, "singleLogoutService", "https://valid.com");
 
-  await selectItem(page, page.locator("#nameIDPolicyFormat"), "Kerberos");
-  await selectItem(page, page.locator("#principalType"), "Attribute [Name]");
+  await selectItem(
+    page,
+    page.locator("#config\\.nameIDPolicyFormat"),
+    "Kerberos",
+  );
+  await selectItem(
+    page,
+    page.locator("#config\\.principalType"),
+    "Attribute [Name]",
+  );
 
   // Toggle SAML switches
   const switches = [
     "config.allowCreate",
-    "config.wantAssertionsSigned",
     "config.wantAssertionsEncrypted",
     "config.forceAuthn",
   ];

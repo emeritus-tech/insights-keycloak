@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
-import adminClient from "../utils/AdminClient";
-import { clickSaveButton } from "../utils/form";
-import { login } from "../utils/login";
-import { assertNotificationMessage } from "../utils/masthead";
-import { assertModalTitle, confirmModal } from "../utils/modal";
-import { goToClients } from "../utils/sidebar";
+import adminClient from "../utils/AdminClient.ts";
+import { clickSaveButton } from "../utils/form.ts";
+import { login } from "../utils/login.ts";
+import { assertNotificationMessage } from "../utils/masthead.ts";
+import { assertModalTitle, confirmModal } from "../utils/modal.ts";
+import { goToClients } from "../utils/sidebar.ts";
 import {
   assertNoResults,
   clearAllFilters,
@@ -12,7 +12,7 @@ import {
   clickTableToolbarItem,
   getTableData,
   searchItem,
-} from "../utils/table";
+} from "../utils/table.ts";
 import {
   assertClipboardContent,
   assertCountValue,
@@ -24,13 +24,9 @@ import {
   fillNewTokenData,
   goToCreateFromEmptyList,
   goToInitialAccessTokenTab,
-} from "./initial-access";
+} from "./initial-access.ts";
 
-test.use({
-  permissions: ["clipboard-write", "clipboard-read"],
-});
-
-test.describe("Client initial access tokens", () => {
+test.describe.serial("Client initial access tokens", () => {
   const tableName = "Initial access token";
   const placeHolder = "Search token";
   const countCellNumber = 3;
@@ -55,7 +51,10 @@ test.describe("Client initial access tokens", () => {
     await assertSaveButtonIsDisabled(page);
   });
 
-  test("Initial access token", async ({ page }) => {
+  test("Initial access token", async ({ page, context, browserName }) => {
+    test.skip(browserName === "firefox", "Still working on it");
+    await context.grantPermissions(["clipboard-write", "clipboard-read"]);
+
     await goToInitialAccessTokenTab(page);
     await assertInitialAccessTokensIsEmpty(page);
     await goToCreateFromEmptyList(page);

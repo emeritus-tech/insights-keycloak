@@ -18,41 +18,46 @@
 package org.keycloak.operator.testsuite.integration;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.client.dsl.Gettable;
-import io.fabric8.kubernetes.api.model.batch.v1.Job;
-import io.fabric8.kubernetes.api.model.batch.v1.JobStatus;
-import io.quarkus.test.junit.QuarkusTest;
-import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.keycloak.operator.Utils;
 import org.keycloak.operator.controllers.KeycloakUpdateJobDependentResource;
-import org.keycloak.operator.crds.v2alpha1.deployment.Keycloak;
-import org.keycloak.operator.crds.v2alpha1.deployment.KeycloakStatusCondition;
-import org.keycloak.operator.crds.v2alpha1.deployment.ValueOrSecret;
-import org.keycloak.operator.crds.v2alpha1.deployment.spec.UpdateSpec;
+import org.keycloak.operator.crds.v2beta1.deployment.Keycloak;
+import org.keycloak.operator.crds.v2beta1.deployment.KeycloakStatusCondition;
+import org.keycloak.operator.crds.v2beta1.deployment.ValueOrSecret;
+import org.keycloak.operator.crds.v2beta1.deployment.spec.UpdateSpec;
+import org.keycloak.operator.testsuite.apiserver.DisabledIfApiServerTest;
 import org.keycloak.operator.testsuite.utils.CRAssert;
 import org.keycloak.operator.update.UpdateStrategy;
 import org.keycloak.operator.update.impl.AutoUpdateLogic;
 
 import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.batch.v1.Job;
+import io.fabric8.kubernetes.api.model.batch.v1.JobStatus;
+import io.fabric8.kubernetes.client.dsl.Gettable;
+import io.quarkus.test.junit.QuarkusTest;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+
+import static org.keycloak.operator.testsuite.utils.CRAssert.eventuallyRecreateUpdateStatus;
+import static org.keycloak.operator.testsuite.utils.CRAssert.eventuallyRollingUpdateStatus;
+import static org.keycloak.operator.testsuite.utils.K8sUtils.deployKeycloak;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.keycloak.operator.testsuite.utils.CRAssert.eventuallyRecreateUpdateStatus;
-import static org.keycloak.operator.testsuite.utils.CRAssert.eventuallyRollingUpdateStatus;
-import static org.keycloak.operator.testsuite.utils.K8sUtils.deployKeycloak;
 
 @Tag(BaseOperatorTest.SLOW)
 @QuarkusTest
@@ -61,6 +66,7 @@ public class UpdateTest extends BaseOperatorTest {
     @ParameterizedTest(name = "testImageChange-{0}")
     @EnumSource(UpdateStrategy.class)
     public void testImageChange(UpdateStrategy updateStrategy) throws InterruptedException {
+        Assumptions.assumeTrue(operatorDeployment != OperatorDeployment.local_apiserver || updateStrategy != UpdateStrategy.AUTO);
         var kc = createInitialDeployment(updateStrategy);
         var updateCondition = assertUnknownUpdateTypeStatus(kc);
         deployKeycloak(k8sclient, kc, true);
@@ -86,6 +92,7 @@ public class UpdateTest extends BaseOperatorTest {
     @ParameterizedTest(name = "testCacheMaxCount-{0}")
     @EnumSource(UpdateStrategy.class)
     public void testCacheMaxCount(UpdateStrategy updateStrategy) throws InterruptedException {
+        Assumptions.assumeTrue(operatorDeployment != OperatorDeployment.local_apiserver || updateStrategy != UpdateStrategy.AUTO);
         var kc = createInitialDeployment(updateStrategy);
         var updateCondition = assertUnknownUpdateTypeStatus(kc);
         deployKeycloak(k8sclient, kc, true);
@@ -112,6 +119,7 @@ public class UpdateTest extends BaseOperatorTest {
     @EnumSource(UpdateStrategy.class)
     @EnabledIfSystemProperty(named = OPERATOR_CUSTOM_IMAGE, matches = ".+")
     public void testOptimizedImage(UpdateStrategy updateStrategy) throws InterruptedException {
+        Assumptions.assumeTrue(operatorDeployment != OperatorDeployment.local_apiserver || updateStrategy != UpdateStrategy.AUTO);
         // In GHA, the custom image is an optimized image of the base image.
         // We should be able to do a zero-downtime update with Auto strategy.
         var kc = createInitialDeployment(updateStrategy);
@@ -137,6 +145,7 @@ public class UpdateTest extends BaseOperatorTest {
         }
     }
 
+    @DisabledIfApiServerTest
     @EnabledIfSystemProperty(named = OPERATOR_CUSTOM_IMAGE, matches = ".+")
     @Test
     public void testNoJobReuse() throws InterruptedException {
@@ -230,6 +239,7 @@ public class UpdateTest extends BaseOperatorTest {
                 .map(ObjectMeta::getName)
                 .toList();
         assertFalse(servicePods.contains(jobPodName), "pods: " + servicePods + " / job pod: " + jobPodName);
+        assertEquals("test", keycloak.getSpec().getUpdateSpec().getLabels().get("example"));
         return job;
     }
 
@@ -260,6 +270,9 @@ public class UpdateTest extends BaseOperatorTest {
         kc.getSpec().setInstances(2);
         var updateSpec = new UpdateSpec();
         updateSpec.setStrategy(updateStrategy);
+        Map<String, String> labels = new java.util.HashMap<>(Map.of());
+        labels.put("example", "test");
+        updateSpec.setLabels(labels);
         if (updateStrategy == UpdateStrategy.EXPLICIT) {
             updateSpec.setRevision("0");
         }

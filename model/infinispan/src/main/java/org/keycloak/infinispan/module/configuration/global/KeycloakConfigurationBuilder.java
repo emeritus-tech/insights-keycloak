@@ -1,11 +1,11 @@
 package org.keycloak.infinispan.module.configuration.global;
 
+import org.keycloak.models.KeycloakSessionFactory;
+
 import org.infinispan.commons.configuration.Builder;
 import org.infinispan.commons.configuration.Combine;
 import org.infinispan.commons.configuration.attributes.AttributeSet;
 import org.infinispan.configuration.global.GlobalConfigurationBuilder;
-import org.keycloak.infinispan.module.certificates.JGroupsCertificateHolder;
-import org.keycloak.models.KeycloakSessionFactory;
 
 public class KeycloakConfigurationBuilder implements Builder<KeycloakConfiguration> {
 
@@ -41,13 +41,4 @@ public class KeycloakConfigurationBuilder implements Builder<KeycloakConfigurati
         return this;
     }
 
-    public KeycloakConfigurationBuilder setJGroupCertificateHolder(JGroupsCertificateHolder jGroupsCertificateHolder) {
-        attributes.attribute(KeycloakConfiguration.JGROUPS_CERTIFICATE_HOLDER).set(jGroupsCertificateHolder);
-        return this;
-    }
-
-    public KeycloakConfigurationBuilder setJGroupsCertificateRotation(int days) {
-        attributes.attribute(KeycloakConfiguration.JGROUPS_CERTIFICATE_ROTATION).set(days);
-        return this;
-    }
 }

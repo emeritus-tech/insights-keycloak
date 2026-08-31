@@ -171,7 +171,7 @@ export const AdminEvents = ({ resourcePath }: AdminEventsProps) => {
   useFetch(
     () => adminClient.realms.getConfigEvents({ realm }),
     (events) => {
-      setAdminEventsEnabled(events?.adminEventsEnabled!);
+      setAdminEventsEnabled(events.adminEventsEnabled!);
     },
     [],
   );
@@ -336,7 +336,7 @@ export const AdminEvents = ({ resourcePath }: AdminEventsProps) => {
                               collapsedText: t("showRemaining"),
                             }}
                             variant={SelectVariant.typeaheadMulti}
-                            typeAheadAriaLabel="Select"
+                            typeAheadAriaLabel="select-resourceTypes"
                             onToggle={(isOpen) =>
                               setSelectResourceTypesOpen(isOpen)
                             }
@@ -344,7 +344,9 @@ export const AdminEvents = ({ resourcePath }: AdminEventsProps) => {
                             onSelect={(selectedValue) => {
                               const option = selectedValue.toString();
                               const changedValue = field.value.includes(option)
-                                ? field.value.filter((item) => item !== option)
+                                ? field.value.filter(
+                                    (item: string) => item !== option,
+                                  )
                                 : [...field.value, option];
 
                               field.onChange(changedValue);
@@ -356,14 +358,14 @@ export const AdminEvents = ({ resourcePath }: AdminEventsProps) => {
                             aria-labelledby={"resourceTypes"}
                             chipGroupComponent={
                               <ChipGroup>
-                                {field.value.map((chip) => (
+                                {field.value.map((chip: string) => (
                                   <Chip
                                     key={chip}
                                     onClick={(resource) => {
                                       resource.stopPropagation();
                                       field.onChange(
                                         field.value.filter(
-                                          (val) => val !== chip,
+                                          (val: string) => val !== chip,
                                         ),
                                       );
                                     }}
@@ -401,7 +403,7 @@ export const AdminEvents = ({ resourcePath }: AdminEventsProps) => {
                               collapsedText: t("showRemaining"),
                             }}
                             variant={SelectVariant.typeaheadMulti}
-                            typeAheadAriaLabel="Select"
+                            typeAheadAriaLabel="select-operationTypes"
                             onToggle={(isOpen) =>
                               setSelectOperationTypesOpen(isOpen)
                             }
@@ -409,7 +411,9 @@ export const AdminEvents = ({ resourcePath }: AdminEventsProps) => {
                             onSelect={(selectedValue) => {
                               const option = selectedValue.toString();
                               const changedValue = field.value.includes(option)
-                                ? field.value.filter((item) => item !== option)
+                                ? field.value.filter(
+                                    (item: string) => item !== option,
+                                  )
                                 : [...field.value, option];
 
                               field.onChange(changedValue);
@@ -421,14 +425,14 @@ export const AdminEvents = ({ resourcePath }: AdminEventsProps) => {
                             aria-labelledby={"operationTypes"}
                             chipGroupComponent={
                               <ChipGroup>
-                                {field.value.map((chip) => (
+                                {field.value.map((chip: string) => (
                                   <Chip
                                     key={chip}
                                     onClick={(operation) => {
                                       operation.stopPropagation();
                                       field.onChange(
                                         field.value.filter(
-                                          (val) => val !== chip,
+                                          (val: string) => val !== chip,
                                         ),
                                       );
                                     }}
@@ -440,10 +444,7 @@ export const AdminEvents = ({ resourcePath }: AdminEventsProps) => {
                             }
                           >
                             {operationTypes?.map((option) => (
-                              <SelectOption
-                                key={option.toString()}
-                                value={option}
-                              >
+                              <SelectOption key={option} value={option}>
                                 {option}
                               </SelectOption>
                             ))}

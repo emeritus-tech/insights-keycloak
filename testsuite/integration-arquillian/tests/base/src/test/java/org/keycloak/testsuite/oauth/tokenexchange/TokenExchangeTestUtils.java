@@ -22,8 +22,8 @@ package org.keycloak.testsuite.oauth.tokenexchange;
 import org.keycloak.authorization.model.Policy;
 import org.keycloak.authorization.model.ResourceServer;
 import org.keycloak.common.Profile;
+import org.keycloak.models.AdminRoles;
 import org.keycloak.models.ClientModel;
-import org.keycloak.models.ImpersonationConstants;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.RoleModel;
@@ -37,14 +37,15 @@ import org.keycloak.representations.idm.authorization.ClientPolicyRepresentation
 import org.keycloak.representations.idm.authorization.DecisionStrategy;
 import org.keycloak.services.managers.ClientManager;
 import org.keycloak.services.managers.RealmManager;
-import org.keycloak.services.resources.admin.permissions.AdminPermissionManagement;
-import org.keycloak.services.resources.admin.permissions.AdminPermissions;
+import org.keycloak.services.resources.admin.fgap.AdminPermissionManagement;
+import org.keycloak.services.resources.admin.fgap.AdminPermissions;
 import org.keycloak.testsuite.util.oauth.OAuthClient;
 
-import static org.junit.Assert.assertNotNull;
 import static org.keycloak.models.ImpersonationSessionNote.IMPERSONATOR_ID;
 import static org.keycloak.models.ImpersonationSessionNote.IMPERSONATOR_USERNAME;
 import static org.keycloak.testsuite.auth.page.AuthRealm.TEST;
+
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
@@ -85,7 +86,7 @@ public class TokenExchangeTestUtils {
 
         if (Profile.isFeatureEnabled(Profile.Feature.ADMIN_FINE_GRAINED_AUTHZ) || Profile.isFeatureEnabled(Profile.Feature.ADMIN_FINE_GRAINED_AUTHZ_V2)) {
             AdminPermissionManagement management = AdminPermissions.management(session, realm);
-            RoleModel impersonateRole = management.getRealmPermissionsClient().getRole(ImpersonationConstants.IMPERSONATION_ROLE);
+            RoleModel impersonateRole = management.getRealmPermissionsClient().getRole(AdminRoles.IMPERSONATION);
             clientExchanger.addScopeMapping(impersonateRole);
         }
 
@@ -95,6 +96,8 @@ public class TokenExchangeTestUtils {
         clientExchanger.addProtocolMapper(AudienceProtocolMapper.createClaimMapper("allowed-exchanger1", null, "legal", true, false, true));
         clientExchanger.addProtocolMapper(AudienceProtocolMapper.createClaimMapper("allowed-exchanger2", null, "no-refresh-token", true, false, true));
         clientExchanger.addProtocolMapper(AudienceProtocolMapper.createClaimMapper("audience-to-itself", "client-exchanger", null, true, false, true));
+       //adding the exception, as te v1 will be removed
+        clientExchanger.setAttribute(OIDCConfigAttributes.ALLOW_TOKEN_INTROSPECTION_WITHOUT_AUDIENCE_CHECK, "true");
 
         ClientModel illegal = realm.addClient("illegal");
         illegal.setClientId("illegal");
@@ -215,7 +218,7 @@ public class TokenExchangeTestUtils {
 
         if (Profile.isFeatureEnabled(Profile.Feature.ADMIN_FINE_GRAINED_AUTHZ) || Profile.isFeatureEnabled(Profile.Feature.ADMIN_FINE_GRAINED_AUTHZ_V2)) {
             AdminPermissionManagement management = AdminPermissions.management(session, realm);
-            RoleModel impersonateRole = management.getRealmPermissionsClient().getRole(ImpersonationConstants.IMPERSONATION_ROLE);
+            RoleModel impersonateRole = management.getRealmPermissionsClient().getRole(AdminRoles.IMPERSONATION);
             user.grantRole(impersonateRole);
         }
 

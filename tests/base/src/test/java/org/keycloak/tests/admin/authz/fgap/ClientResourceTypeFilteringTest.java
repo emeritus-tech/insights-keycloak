@@ -17,30 +17,28 @@
 
 package org.keycloak.tests.admin.authz.fgap;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.keycloak.authorization.AdminPermissionsSchema.CLIENTS_RESOURCE_TYPE;
-import static org.keycloak.authorization.AdminPermissionsSchema.VIEW;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.keycloak.admin.client.Keycloak;
-import org.keycloak.admin.client.resource.ClientsResource;
-import org.keycloak.admin.client.resource.ScopePermissionsResource;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.authorization.Logic;
-import org.keycloak.representations.idm.authorization.ScopePermissionRepresentation;
 import org.keycloak.representations.idm.authorization.UserPolicyRepresentation;
 import org.keycloak.testframework.annotations.InjectAdminClient;
 import org.keycloak.testframework.annotations.KeycloakIntegrationTest;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import static org.keycloak.authorization.fgap.AdminPermissionsSchema.CLIENTS_RESOURCE_TYPE;
+import static org.keycloak.authorization.fgap.AdminPermissionsSchema.VIEW;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @KeycloakIntegrationTest
 public class ClientResourceTypeFilteringTest extends AbstractPermissionTest {
@@ -65,25 +63,13 @@ public class ClientResourceTypeFilteringTest extends AbstractPermissionTest {
         }
     }
 
-    @AfterEach
-    public void onAfterEach() {
-        ScopePermissionsResource permissions = getScopePermissionsResource(client);
-
-        for (ScopePermissionRepresentation permission : permissions.findAll(null, null, null, -1, -1)) {
-            permissions.findById(permission.getId()).remove();
-        }
-
-        ClientsResource clients = realm.admin().clients();
-        clients.findAll().stream().filter((c) -> c.getClientId().startsWith("client-")).forEach(group -> clients.get(group.getId()).remove());
-    }
-
     @Test
     public void testViewAllClientsUsingUserPolicy() {
         List<ClientRepresentation> search = realmAdminClient.realm(realm.getName()).clients().findAll();
         assertTrue(search.isEmpty());
 
-        UserPolicyRepresentation policy = createUserPolicy(realm, client,"Only My Admin User Policy", realm.admin().users().search("myadmin").get(0).getId());
-        createAllPermission(client, CLIENTS_RESOURCE_TYPE, policy, Set.of(VIEW));
+        UserPolicyRepresentation policy = createUserPolicy(realm, adminPermissionsClient,"Only My Admin User Policy", realm.admin().users().search("myadmin").get(0).getId());
+        createAllPermission(adminPermissionsClient, CLIENTS_RESOURCE_TYPE, policy, Set.of(VIEW));
 
         search = realmAdminClient.realm(realm.getName()).clients().findAll();
         assertFalse(search.isEmpty());
@@ -95,8 +81,8 @@ public class ClientResourceTypeFilteringTest extends AbstractPermissionTest {
         List<ClientRepresentation> search = realmAdminClient.realm(realm.getName()).clients().findAll();
         assertTrue(search.isEmpty());
 
-        UserPolicyRepresentation policy = createUserPolicy(realm, client,"Only My Admin User Policy", realm.admin().users().search("myadmin").get(0).getId());
-        createAllPermission(client, CLIENTS_RESOURCE_TYPE, policy, Set.of(VIEW));
+        UserPolicyRepresentation policy = createUserPolicy(realm, adminPermissionsClient,"Only My Admin User Policy", realm.admin().users().search("myadmin").get(0).getId());
+        createAllPermission(adminPermissionsClient, CLIENTS_RESOURCE_TYPE, policy, Set.of(VIEW));
 
         search = realmAdminClient.realm(realm.getName()).clients().findAll("client-", true, true, null, null);
         assertFalse(search.isEmpty());
@@ -108,8 +94,8 @@ public class ClientResourceTypeFilteringTest extends AbstractPermissionTest {
         List<ClientRepresentation> search = realmAdminClient.realm(realm.getName()).clients().findAll();
         assertTrue(search.isEmpty());
 
-        UserPolicyRepresentation policy = createUserPolicy(realm, client,"Only My Admin User Policy", realm.admin().users().search("myadmin").get(0).getId());
-        createAllPermission(client, CLIENTS_RESOURCE_TYPE, policy, Set.of(VIEW));
+        UserPolicyRepresentation policy = createUserPolicy(realm, adminPermissionsClient,"Only My Admin User Policy", realm.admin().users().search("myadmin").get(0).getId());
+        createAllPermission(adminPermissionsClient, CLIENTS_RESOURCE_TYPE, policy, Set.of(VIEW));
 
         search = realmAdminClient.realm(realm.getName()).clients().query("saml.artifact.binding.identifier:\"value\"");
         assertFalse(search.isEmpty());
@@ -118,20 +104,20 @@ public class ClientResourceTypeFilteringTest extends AbstractPermissionTest {
 
     @Test
     public void testDeniedResourcesPrecedenceOverGrantedResources() {
-        UserPolicyRepresentation policy = createUserPolicy(realm, client,"Only My Admin User Policy", realm.admin().users().search("myadmin").get(0).getId());
-        createAllPermission(client, CLIENTS_RESOURCE_TYPE, policy, Set.of(VIEW));
+        UserPolicyRepresentation policy = createUserPolicy(realm, adminPermissionsClient,"Only My Admin User Policy", realm.admin().users().search("myadmin").get(0).getId());
+        createAllPermission(adminPermissionsClient, CLIENTS_RESOURCE_TYPE, policy, Set.of(VIEW));
 
         List<ClientRepresentation> search = realmAdminClient.realm(realm.getName()).clients().findAll("client-", true, true, null, null);
         assertFalse(search.isEmpty());
         assertEquals(50, search.size());
 
-        UserPolicyRepresentation notMyAdminPolicy = createUserPolicy(Logic.NEGATIVE, realm, client,"Not My Admin User Policy", realm.admin().users().search("myadmin").get(0).getId());
+        UserPolicyRepresentation notMyAdminPolicy = createUserPolicy(Logic.NEGATIVE, realm, adminPermissionsClient,"Not My Admin User Policy", realm.admin().users().search("myadmin").get(0).getId());
         Set<String> notAllowedClients = search.stream()
                 .filter((g) -> Set.of("client-0", "client-15", "client-30", "client-45").contains(g.getClientId()))
                 .map(ClientRepresentation::getId)
                 .collect(Collectors.toSet());
         assertFalse(notAllowedClients.isEmpty());
-        createPermission(client, notAllowedClients, CLIENTS_RESOURCE_TYPE, Set.of(VIEW), notMyAdminPolicy);
+        createPermission(adminPermissionsClient, notAllowedClients, CLIENTS_RESOURCE_TYPE, Set.of(VIEW), notMyAdminPolicy);
         search = realmAdminClient.realm(realm.getName()).clients().findAll("client-", true, true, null, null);
         assertFalse(search.isEmpty());
         assertTrue(search.stream().map(ClientRepresentation::getId).noneMatch(notAllowedClients::contains));
@@ -143,8 +129,8 @@ public class ClientResourceTypeFilteringTest extends AbstractPermissionTest {
         List<ClientRepresentation> search = realmAdminClient.realm(realm.getName()).clients().findByClientId(expectedClientId);
         assertTrue(search.isEmpty());
 
-        UserPolicyRepresentation allowPolicy = createUserPolicy(realm, client,"Only My Admin User Policy", realm.admin().users().search("myadmin").get(0).getId());
-        createPermission(client, expectedClientId, CLIENTS_RESOURCE_TYPE, Set.of(VIEW), allowPolicy);
+        UserPolicyRepresentation allowPolicy = createUserPolicy(realm, adminPermissionsClient,"Only My Admin User Policy", realm.admin().users().search("myadmin").get(0).getId());
+        createPermission(adminPermissionsClient, expectedClientId, CLIENTS_RESOURCE_TYPE, Set.of(VIEW), allowPolicy);
         search = realmAdminClient.realm(realm.getName()).clients().findByClientId(expectedClientId);
         assertFalse(search.isEmpty());
         assertEquals(1, search.size());

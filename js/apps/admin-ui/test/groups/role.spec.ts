@@ -1,25 +1,25 @@
 import { test } from "@playwright/test";
 import { v4 as uuid } from "uuid";
-import adminClient from "../utils/AdminClient";
-import { login } from "../utils/login";
-import { assertNotificationMessage } from "../utils/masthead";
+import adminClient from "../utils/AdminClient.ts";
+import { login } from "../utils/login.ts";
+import { assertNotificationMessage } from "../utils/masthead.ts";
+import { confirmModal } from "../utils/modal.ts";
 import {
-  changeRoleTypeFilter,
+  pickRoleType,
   clickHideInheritedRoles,
   clickUnassign,
   confirmModalAssign,
   pickRole,
-} from "../utils/roles";
-import { goToGroups } from "../utils/sidebar";
+} from "../utils/roles.ts";
+import { goToGroups } from "../utils/sidebar.ts";
 import {
   assertEmptyTable,
   assertRowExists,
   clickTableRowItem,
-} from "../utils/table";
-import { assignRole, goToRoleMappingTab } from "./role";
-import { confirmModal } from "../utils/modal";
+} from "../utils/table.ts";
+import { goToRoleMappingTab } from "./role.ts";
 
-test.describe("Role mappings", () => {
+test.describe.serial("Role mappings", () => {
   const predefinedGroup = "group1";
   const predefinedGroup1 = "group2";
 
@@ -53,8 +53,7 @@ test.describe("Role mappings", () => {
   });
 
   test("Assign roles from empty state", async ({ page }) => {
-    await assignRole(page);
-    await changeRoleTypeFilter(page, "roles");
+    await pickRoleType(page, "roles");
     await pickRole(page, "default-roles-master", true);
     await confirmModalAssign(page);
 

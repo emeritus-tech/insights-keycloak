@@ -1,20 +1,20 @@
 import { expect, test } from "@playwright/test";
 import { v4 as uuid } from "uuid";
-import adminClient from "../utils/AdminClient";
-import { clickCancelButton, clickSaveButton } from "../utils/form";
-import { login } from "../utils/login";
+import adminClient from "../utils/AdminClient.ts";
+import { clickCancelButton, clickSaveButton } from "../utils/form.ts";
+import { login } from "../utils/login.ts";
 import {
   assertAxeViolations,
   assertNotificationMessage,
-} from "../utils/masthead";
-import { confirmModal } from "../utils/modal";
-import { goToClients, goToRealm } from "../utils/sidebar";
+} from "../utils/masthead.ts";
+import { confirmModal } from "../utils/modal.ts";
+import { goToClients, goToRealm } from "../utils/sidebar.ts";
 import {
   assertRowExists,
   clickRowKebabItem,
   clickTableRowItem,
   getTableData,
-} from "../utils/table";
+} from "../utils/table.ts";
 import {
   clickCreateAnonymousPolicy,
   clickCreateAuthenticatedPolicy,
@@ -22,9 +22,9 @@ import {
   fillPolicyForm,
   goToAuthenticatedSubTab,
   goToClientRegistrationTab,
-} from "./registration-policies";
+} from "./registration-policies.ts";
 
-test.describe("Client registration policies tab", () => {
+test.describe.serial("Client registration policies tab", () => {
   const tabName = "Client registration";
   const realmName = `clients-details-realm-${uuid()}`;
 
@@ -38,7 +38,7 @@ test.describe("Client registration policies tab", () => {
     await goToClientRegistrationTab(page);
   });
 
-  test.describe("Anonymous client policies subtab", () => {
+  test.describe.serial("Anonymous client policies subtab", () => {
     const policyName = "newAnonymPolicy1";
     const policyNameUpdated = "policy2";
 
@@ -62,7 +62,7 @@ test.describe("Client registration policies tab", () => {
     });
 
     test("edit anonymous client registration policy", async ({ page }) => {
-      await clickTableRowItem(page, policyName);
+      await clickTableRowItem(page, "Consent Required");
       await fillPolicyForm(page, { name: policyNameUpdated });
       await clickSaveButton(page);
 
@@ -76,7 +76,7 @@ test.describe("Client registration policies tab", () => {
     });
 
     test("delete anonymous client registration policy", async ({ page }) => {
-      await clickRowKebabItem(page, policyNameUpdated, "Delete");
+      await clickRowKebabItem(page, "Full Scope Disabled", "Delete");
       await confirmModal(page);
 
       await assertNotificationMessage(
@@ -86,7 +86,7 @@ test.describe("Client registration policies tab", () => {
     });
   });
 
-  test.describe("Authenticated client policies subtab", () => {
+  test.describe.serial("Authenticated client policies subtab", () => {
     const policyName = "newAuthPolicy1";
     const policyNameUpdated = "policy3";
 
@@ -114,7 +114,7 @@ test.describe("Client registration policies tab", () => {
     });
 
     test("edit authenticated client registration policy", async ({ page }) => {
-      await clickTableRowItem(page, policyName);
+      await clickTableRowItem(page, "Allowed Protocol Mapper Types");
       await fillPolicyForm(page, { name: policyNameUpdated });
       await clickSaveButton(page);
 
@@ -129,7 +129,7 @@ test.describe("Client registration policies tab", () => {
     test("delete authenticated client registration policy", async ({
       page,
     }) => {
-      await clickRowKebabItem(page, policyNameUpdated, "Delete");
+      await clickRowKebabItem(page, "Allowed Client Scopes", "Delete");
       await confirmModal(page);
 
       await assertNotificationMessage(
@@ -140,7 +140,8 @@ test.describe("Client registration policies tab", () => {
   });
 });
 
-test.describe("Accessibility tests for client registration policies", () => {
+test.describe
+  .serial("Accessibility tests for client registration policies", () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
     await goToClients(page);

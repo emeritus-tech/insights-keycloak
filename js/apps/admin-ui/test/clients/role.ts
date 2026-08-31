@@ -1,10 +1,10 @@
-import { expect, Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import {
-  changeRoleTypeFilter,
+  pickRoleType,
   confirmModalAssign,
   pickRole,
-  RoleType,
-} from "../utils/roles";
+  type RoleType,
+} from "../utils/roles.ts";
 
 export async function goToRolesTab(page: Page) {
   await page.getByTestId("rolesTab").click();
@@ -45,7 +45,7 @@ export async function addAssociatedRoles(
   roleName: string,
   roleType: RoleType = "roles",
 ) {
-  await changeRoleTypeFilter(page, roleType);
+  await pickRoleType(page, roleType);
   await pickRole(page, roleName, true);
   await confirmModalAssign(page);
 }

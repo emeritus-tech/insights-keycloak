@@ -17,19 +17,19 @@
 
 package org.keycloak.quarkus.runtime.configuration;
 
-import static org.keycloak.quarkus.runtime.cli.Picocli.ARG_PREFIX;
-
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+
+import org.keycloak.config.Option;
+import org.keycloak.quarkus.runtime.configuration.mappers.PropertyMapper;
+import org.keycloak.utils.StringUtil;
 
 import io.quarkus.runtime.configuration.ConfigUtils;
 import io.smallrye.config.ConfigValue;
 import io.smallrye.config.SmallRyeConfig;
 
-import org.keycloak.config.Option;
-import org.keycloak.utils.StringUtil;
-
+import static org.keycloak.quarkus.runtime.cli.Picocli.ARG_PREFIX;
 import static org.keycloak.quarkus.runtime.configuration.MicroProfileConfigProvider.NS_KEYCLOAK_PREFIX;
 
 /**
@@ -51,8 +51,30 @@ public final class Configuration {
         return getOptionalBooleanValue(NS_KEYCLOAK_PREFIX + option.getKey()).orElse(false);
     }
 
+    /**
+     * Return true if the value is not derived (meaning that the config source name is set)
+     * and the config source is something that a user can change the values in
+     */
+    public static boolean isUserModifiable(ConfigValue configValue) {
+        return configValue.getConfigSourceName() != null && !isDefault(configValue);
+    }
+
+    public static boolean isDefault(ConfigValue configValue) {
+        return configValue.getConfigSourceOrdinal() <= PropertyMapper.DEFAULT_VALUE_ORDINAL;
+    }
+
+    public static boolean isSet(Option<?> option) {
+        return Optional.ofNullable(getKcConfigValue(option.getKey()))
+                .filter(Configuration::isUserModifiable)
+                .isPresent();
+    }
+
     public static boolean isTrue(String propertyName) {
         return getOptionalBooleanValue(propertyName).orElse(false);
+    }
+
+    public static boolean isKcPropertyTrue(String propertyName) {
+        return getOptionalBooleanKcValue(propertyName).orElse(false);
     }
 
     public static boolean isBlank(Option<?> option) {
@@ -73,15 +95,20 @@ public final class Configuration {
                 .isPresent();
     }
 
+    public static boolean isInitialized() {
+        return config != null;
+    }
+
     public static synchronized SmallRyeConfig getConfig() {
         if (config == null) {
-            config = ConfigUtils.emptyConfigBuilder().addDiscoveredSources().build();
+            config = ConfigUtils.emptyConfigBuilder().addDiscoveredSources().withCustomizers(new ConfigBuilderCustomizer()).build();
         }
         return config;
     }
 
     public static void resetConfig() {
         config = null;
+        KeycloakConfigSourceProvider.reload();
     }
 
     /**
@@ -93,10 +120,6 @@ public final class Configuration {
 
     public static Map<String, String> getRawPersistedProperties() {
         return PersistedConfigSource.getInstance().getProperties();
-    }
-
-    public static String getRawValue(String propertyName) {
-        return getConfig().getRawValue(propertyName);
     }
 
     public static Iterable<String> getPropertyNames() {
@@ -160,12 +183,18 @@ public final class Configuration {
     }
 
     public static String toDashCase(String key) {
+        if (key == null) {
+            return null;
+        }
         StringBuilder sb = new StringBuilder(key.length());
         boolean l = false;
 
         for (int i = 0; i < key.length(); i++) {
             char c = key.charAt(i);
-            if (l && Character.isUpperCase(c)) {
+            if (c == '.') {
+                c = '-'; // this is not documented, but was in the previous logic
+                l = false;
+            } else if (l && Character.isUpperCase(c)) {
                 sb.append('-');
                 c = Character.toLowerCase(c);
                 l = false;
