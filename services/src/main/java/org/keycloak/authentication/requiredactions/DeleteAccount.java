@@ -195,9 +195,4 @@ public class DeleteAccount implements RequiredActionProvider, RequiredActionFact
     AuthenticationSessionModel authSession = context.getAuthenticationSession();
     new AuthenticationSessionManager(session).removeAuthenticationSession(authSession.getRealm(), authSession, true);
   }
-
-  private void removeAuthenticationSession(RequiredActionContext context, KeycloakSession session) {
-    AuthenticationSessionModel authSession = context.getAuthenticationSession();
-    new AuthenticationSessionManager(session).removeAuthenticationSession(authSession.getRealm(), authSession, true);
-  }
 }
