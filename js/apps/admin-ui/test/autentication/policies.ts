@@ -1,8 +1,7 @@
-import { Page, expect } from "@playwright/test";
-import { selectItem } from "../utils/form";
+import { type Page, expect } from "@playwright/test";
+import { selectItem } from "../utils/form.ts";
 
 export async function goToOTPPolicyTab(page: Page) {
-  await page.getByTestId("policies").click();
   await page.getByTestId("otpPolicy").click();
 }
 
@@ -15,20 +14,18 @@ export async function assertSupportedApplications(
 }
 
 export async function setPolicyType(page: Page, type: string) {
-  page.getByTestId(type).click();
+  await page.getByTestId(type).click();
 }
 
 export async function increaseInitialCounter(page: Page) {
-  page.locator("#otpPolicyInitialCounter").getByLabel("Plus").click();
+  await page.locator("#otpPolicyInitialCounter").getByLabel("Plus").click();
 }
 
 export async function goToWebauthnPage(page: Page) {
-  await page.getByTestId("policies").click();
   await page.getByTestId("webauthnPolicy").click();
 }
 
 export async function goToWebauthnPasswordlessPage(page: Page) {
-  await page.getByTestId("policies").click();
   await page.getByTestId("webauthnPasswordlessPolicy").click();
 }
 

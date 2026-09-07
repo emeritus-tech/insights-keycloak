@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { v4 as uuid } from "uuid";
-import { fillRoleData } from "../clients/role";
-import adminClient from "../utils/AdminClient";
+import { fillRoleData } from "../clients/role.ts";
+import adminClient from "../utils/AdminClient.ts";
 import {
   assertAttribute,
   assertAttributeLength,
@@ -9,22 +9,18 @@ import {
   deleteAttribute,
   fillAttributeData,
   goToAttributesTab,
-} from "../utils/attributes";
+} from "../utils/attributes.ts";
+import { assertRequiredFieldError, clickSaveButton } from "../utils/form.ts";
+import { login } from "../utils/login.ts";
+import { assertNotificationMessage } from "../utils/masthead.ts";
+import { confirmModal } from "../utils/modal.ts";
 import {
-  assertRequiredFieldError,
-  clickCancelButton,
-  clickSaveButton,
-} from "../utils/form";
-import { login } from "../utils/login";
-import { assertNotificationMessage } from "../utils/masthead";
-import { confirmModal } from "../utils/modal";
-import {
-  changeRoleTypeFilter,
+  pickRoleType,
   clickUnassign,
   confirmModalAssign,
   pickRole,
-} from "../utils/roles";
-import { goToRealm, goToRealmRoles } from "../utils/sidebar";
+} from "../utils/roles.ts";
+import { goToRealm, goToRealmRoles } from "../utils/sidebar.ts";
 import {
   assertEmptyTable,
   assertNoResults,
@@ -32,16 +28,14 @@ import {
   clickRowKebabItem,
   clickTableRowItem,
   searchItem,
-} from "../utils/table";
+} from "../utils/table.ts";
 import {
   assertUnassignDisabled,
-  assignRole,
-  clickAddRoleButton,
   clickCreateRoleButton,
   goToAssociatedRolesTab,
-} from "./main";
+} from "./main.ts";
 
-test.describe("Realm roles test", () => {
+test.describe.serial("Realm roles test", () => {
   const realmName = `realm-roles-${uuid()}`;
   const prefix = "realm_role_crud";
   const searchPlaceHolder = "Search role by name";
@@ -62,7 +56,7 @@ test.describe("Realm roles test", () => {
 
     await fillRoleData(page, "admin");
     await clickSaveButton(page);
-    await clickCancelButton(page);
+    await goToRealmRoles(page);
 
     await clickCreateRoleButton(page);
     await fillRoleData(page, "admin");
@@ -132,25 +126,22 @@ test.describe("Realm roles test", () => {
     await goToAssociatedRolesTab(page);
 
     // Add associated realm role from search bar
-    await clickAddRoleButton(page, true);
-    await changeRoleTypeFilter(page, "roles");
+    await pickRoleType(page, "roles");
     await pickRole(page, "offline_access", true);
     await confirmModalAssign(page);
     await assertNotificationMessage(page, "Associated roles have been added");
 
     // Add associated client role from search bar
-    await clickAddRoleButton(page);
-    await pickRole(page, "accountmanage-account", true);
+    await pickRoleType(page, "client");
+    await pickRole(page, "manage-account", true);
     await confirmModalAssign(page);
     await assertNotificationMessage(page, "Associated roles have been added");
 
     // Add associated client role
-    await clickAddRoleButton(page);
-    await pickRole(page, "accountmanage-consent", true);
+    await pickRoleType(page, "client");
+    await pickRole(page, "manage-consent", true);
     await confirmModalAssign(page);
     await assertNotificationMessage(page, "Associated roles have been added");
-
-    await clickAddRoleButton(page);
   });
 
   test("should search existing associated role by name and go to it", async ({
@@ -207,8 +198,8 @@ test.describe("Realm roles test", () => {
     await clickTableRowItem(page, itemId);
     await goToAssociatedRolesTab(page);
 
-    await assignRole(page);
-    await pickRole(page, "accountview-profile", true);
+    await pickRoleType(page, "client");
+    await pickRole(page, "view-profile", true);
     await confirmModalAssign(page);
 
     await assertUnassignDisabled(page);
@@ -222,8 +213,8 @@ test.describe("Realm roles test", () => {
     await clickTableRowItem(page, itemId);
     await goToAssociatedRolesTab(page);
 
-    await assignRole(page);
-    await pickRole(page, "accountview-profile", true);
+    await pickRoleType(page, "client");
+    await pickRole(page, "view-profile", true);
     await confirmModalAssign(page);
 
     await clickRowKebabItem(page, "account view-profile", "Unassign");
@@ -239,8 +230,8 @@ test.describe("Realm roles test", () => {
     await clickTableRowItem(page, itemId);
     await goToAssociatedRolesTab(page);
 
-    await assignRole(page);
-    await pickRole(page, "accountview-profile", true);
+    await pickRoleType(page, "client");
+    await pickRole(page, "view-profile", true);
     await confirmModalAssign(page);
 
     await page.locator('input[name="check-all"]').check();
@@ -249,7 +240,7 @@ test.describe("Realm roles test", () => {
     await assertNotificationMessage(page, "Role mapping updated");
   });
 
-  test.describe("edit role details", () => {
+  test.describe.serial("edit role details", () => {
     const editRoleName = "going to edit";
     const description = "some description";
     const updateDescription = "updated description";

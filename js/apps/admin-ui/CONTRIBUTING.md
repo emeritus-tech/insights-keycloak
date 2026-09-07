@@ -6,7 +6,7 @@ This project is the next generation of the Keycloak Administration UI. It is wri
 
 ### Prerequisites
 
-Make sure that you have Node.js version 18 (or later) installed on your system. If you do not have Node.js installed we recommend using [Node Version Manager](https://github.com/nvm-sh/nvm) to install it.
+Make sure that you have Node.js version 24 (or later) [installed on your system](https://nodejs.org/en/download).
 
 You can find out which version of Node.js you are using by running the following command:
 
@@ -33,6 +33,9 @@ pnpm dev
 Once the process of optimization is done your browser will automatically open your local host on port `8080`. From here you will be redirected to the Keycloak server to authenticate, which you can do with the default credentials (`admin`/`admin`).
 
 You can now start making changes to the source code, and they will be reflected in your browser.
+
+In this mode the messages for translation will come directly from the messages.properties and the realm overrides will be ignored, this makes testing adding messages easier.
+But when you want to see the realm overrides instead, you can add the environment variable `VITE_REALM_OVERRIDES=true` to disable this behavior.
 
 ## Building as a Keycloak theme
 
@@ -63,3 +66,46 @@ Alternatively the tests can also run headless as follows:
 ```
 pnpm test:integration
 ```
+
+#### Running specific tests
+You can execute specific individual tests as follows:
+
+```bash
+# f.e. pnpm test:integration -- test/clients/main.spec.ts
+pnpm test:integration -- <path-to-the-test-or-name>
+```
+
+You can specify the full path or just the test file name.
+
+### Running Playwright UI
+
+The Playwright UI provides an interactive environment for developing and debugging UI tests.
+Before proceeding, ensure the following prerequisites are met:
+
+- The Keycloak server is running on `http://localhost:8080`.
+- An admin user with login `admin` and password `admin` exists in the master realm.
+
+Execute the following steps from the repository root.
+
+1. Navigate to the Admin UI directory:
+
+   ```bash
+   cd apps/admin-ui
+   ```
+
+2. Install the Playwright browser binaries. This step is required once per local development environment:
+
+   ```bash
+   pnpm exec playwright install
+   ```
+
+3. Launch the Playwright interactive UI and run tests (Chromium):
+
+   ```bash
+   pnpm run test:integration -- --project=chromium --ui
+   ```
+
+After executing these steps, the Playwright Test Runner UI will open in a new window. You can select and run individual
+tests or test suites interactively. The test runner provides features such as viewing test results, debugging failed
+tests, and inspecting the browser state during test execution.
+

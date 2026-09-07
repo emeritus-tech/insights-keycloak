@@ -1,19 +1,23 @@
 import { test } from "@playwright/test";
 import { v4 as uuid } from "uuid";
-import adminClient from "../utils/AdminClient";
-import { login } from "../utils/login";
-import { assertAxeViolations } from "../utils/masthead";
-import { goToRealm, goToRealmSettings } from "../utils/sidebar";
-import { goToRealmEventsTab } from "./events";
-import { goToAddProviders, goToKeys } from "./keys";
-import { goToLoginTab } from "./login";
-import { goToLocalizationTab, goToRealmOverridesSubTab } from "./localization";
+import adminClient from "../utils/AdminClient.ts";
+import { login } from "../utils/login.ts";
+import { assertAxeViolations } from "../utils/masthead.ts";
+import { pickRoleType } from "../utils/roles.ts";
+import { goToRealm, goToRealmSettings } from "../utils/sidebar.ts";
 import {
   goToClientPoliciesList,
   goToClientPoliciesTab,
-} from "./client-policies";
+} from "./client-policies.ts";
+import { goToRealmEventsTab } from "./events.ts";
+import { goToAddProviders, goToKeys } from "./keys.ts";
+import {
+  goToLocalizationTab,
+  goToRealmOverridesSubTab,
+} from "./localization.ts";
+import { goToLoginTab } from "./login.ts";
 
-test.describe("Accessibility tests for realm settings", () => {
+test.describe.serial("Accessibility tests for realm settings", () => {
   const realmName = `realm-settings-accessibility-${uuid()}`;
 
   test.beforeAll(() => adminClient.createRealm(realmName));
@@ -186,7 +190,7 @@ test.describe("Accessibility tests for realm settings", () => {
     page,
   }) => {
     await page.getByTestId("rs-userRegistration-tab").click();
-    await page.getByTestId("assignRole").click();
+    await pickRoleType(page, "client");
     await assertAxeViolations(page);
   });
 });

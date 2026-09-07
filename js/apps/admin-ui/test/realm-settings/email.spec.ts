@@ -1,9 +1,9 @@
 import { test } from "@playwright/test";
 import { v4 as uuid } from "uuid";
-import adminClient from "../utils/AdminClient";
-import { login } from "../utils/login";
-import { assertNotificationMessage } from "../utils/masthead";
-import { goToRealm, goToRealmSettings } from "../utils/sidebar";
+import adminClient from "../utils/AdminClient.ts";
+import { login } from "../utils/login.ts";
+import { assertNotificationMessage } from "../utils/masthead.ts";
+import { goToRealm, goToRealmSettings } from "../utils/sidebar.ts";
 import {
   clickSaveEmailButton,
   goToEmailTab,
@@ -13,9 +13,9 @@ import {
   assertEmailPageWithPasswordAuth,
   populateEmailPageWithTokenAuth,
   assertEmailPageWithTokenAuth,
-} from "./email";
+} from "./email.ts";
 
-test.describe("Email", () => {
+test.describe.serial("Email", () => {
   const realmName = `email-realm-settings-${uuid()}`;
 
   test.beforeAll(() => adminClient.createRealm(realmName));
@@ -35,18 +35,14 @@ test.describe("Email", () => {
     await goToRealmSettings(page);
     await goToEmailTab(page);
     await assertEmailPageNoAuth(page);
-  });
 
-  test("Add email data with password authentication", async ({ page }) => {
     await populateEmailPageWithPasswordAuth(page);
     await clickSaveEmailButton(page);
     await assertNotificationMessage(page, "Realm successfully updated");
     await goToRealmSettings(page);
     await goToEmailTab(page);
     await assertEmailPageWithPasswordAuth(page);
-  });
 
-  test("Add email data with token authentication", async ({ page }) => {
     await populateEmailPageWithTokenAuth(page);
     await clickSaveEmailButton(page);
     await assertNotificationMessage(page, "Realm successfully updated");

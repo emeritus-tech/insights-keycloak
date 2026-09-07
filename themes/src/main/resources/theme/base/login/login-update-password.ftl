@@ -15,7 +15,6 @@
                     <i class="fa fa-eye" aria-hidden="true"></i>
                 </button>
             </div>
-
             <div class="${properties.kcFormGroupClass!}">
                 <div class="${properties.kcLabelWrapperClass!}">
                     <label for="password-new" class="${properties.kcLabelClass!}">${msg("passwordNew")}</label>

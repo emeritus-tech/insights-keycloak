@@ -1,5 +1,6 @@
 package org.keycloak.test.migration;
 
+import java.util.Arrays;
 import java.util.List;
 
 public abstract class TestRewrite {
@@ -10,6 +11,15 @@ public abstract class TestRewrite {
 
     protected int findLine(String regex) {
         for (int i = 0; i < content.size(); i++) {
+            if (content.get(i).matches(regex)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    protected int findLine(String regex, int startLine) {
+        for (int i = startLine; i < content.size(); i++) {
             if (content.get(i).matches(regex)) {
                 return i;
             }
@@ -40,18 +50,31 @@ public abstract class TestRewrite {
         content.add(line, updated);
     }
 
+    public void insertContent(int start, List<String> lines) {
+        content.addAll(start, lines);
+    }
+
+    public void insertContent(int start, String... lines) {
+        insertContent(start, Arrays.stream(lines).toList());
+    }
+
     public void addImport(String clazzName) {
         String add = "import " + clazzName + ";";
 
         int l = -1;
+        int lastImport = -1;
 
         for (int i = 0; i < content.size(); i++) {
             String c = content.get(i);
             if (c.matches("import [^ ]*;")) {
+                lastImport = i;
                 if (c.compareTo(add) > 1) {
                     l = i;
                     break;
                 }
+            } else if (c.matches("^\\b(?:public\\s+)?class\\b.*Test\\s+\\{$")) {
+                l = lastImport + 1;
+                break;
             }
         }
 

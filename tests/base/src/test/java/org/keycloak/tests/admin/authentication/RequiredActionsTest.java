@@ -17,8 +17,16 @@
 
 package org.keycloak.tests.admin.authentication;
 
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Test;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+
+import jakarta.ws.rs.ClientErrorException;
+import jakarta.ws.rs.NotFoundException;
+
 import org.keycloak.events.admin.OperationType;
 import org.keycloak.events.admin.ResourceType;
 import org.keycloak.representations.idm.RequiredActionConfigInfoRepresentation;
@@ -33,18 +41,13 @@ import org.keycloak.testframework.events.AdminEvents;
 import org.keycloak.testframework.realm.ManagedRealm;
 import org.keycloak.testframework.server.KeycloakServerConfig;
 import org.keycloak.testframework.server.KeycloakServerConfigBuilder;
-import org.keycloak.testsuite.actions.DummyConfigurableRequiredActionFactory;
-import org.keycloak.testsuite.actions.DummyRequiredActionFactory;
+import org.keycloak.tests.providers.actions.DummyConfigurableRequiredActionFactory;
+import org.keycloak.tests.providers.actions.DummyRequiredActionFactory;
+import org.keycloak.tests.suites.DatabaseTest;
 import org.keycloak.tests.utils.admin.AdminEventPaths;
 
-import jakarta.ws.rs.ClientErrorException;
-import jakarta.ws.rs.NotFoundException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
 
 /**
  * @author <a href="mailto:mstrukel@redhat.com">Marko Strukelj</a>
@@ -63,14 +66,17 @@ public class RequiredActionsTest extends AbstractAuthenticationTest {
         List<RequiredActionProviderRepresentation> result = authMgmtResource.getRequiredActions();
 
         List<RequiredActionProviderRepresentation> expected = new ArrayList<>();
+        addRequiredAction(expected, "CONFIGURE_RECOVERY_AUTHN_CODES", "Recovery Authentication Codes", true, false, null);
         addRequiredAction(expected, "CONFIGURE_TOTP", "Configure OTP", true, false, null);
         addRequiredAction(expected, "TERMS_AND_CONDITIONS", "Terms and Conditions", false, false, null);
+        addRequiredAction(expected, "UPDATE_EMAIL", "Update Email", false, false, null);
         addRequiredAction(expected, "UPDATE_PASSWORD", "Update Password", true, false, null);
         addRequiredAction(expected, "UPDATE_PROFILE", "Update Profile", true, false, null);
         addRequiredAction(expected, "VERIFY_EMAIL", "Verify Email", true, false, null);
         addRequiredAction(expected, "VERIFY_PROFILE", "Verify Profile", true, false, null);
         addRequiredAction(expected, "delete_account", "Delete Account", false, false, null);
         addRequiredAction(expected, "delete_credential", "Delete Credential", true, false, null);
+        addRequiredAction(expected, "idp_link", "Linking Identity Provider", true, false, null);
         addRequiredAction(expected, "update_user_locale", "Update User Locale", true, false, null);
         addRequiredAction(expected, "webauthn-register", "Webauthn Register", true, false, null);
         addRequiredAction(expected, "webauthn-register-passwordless", "Webauthn Register Passwordless", true, false, null);
@@ -99,6 +105,7 @@ public class RequiredActionsTest extends AbstractAuthenticationTest {
     }
 
     @Test
+    @DatabaseTest
     public void testCRUDRequiredAction() {
         int lastPriority = authMgmtResource.getRequiredActions().get(authMgmtResource.getRequiredActions().size() - 1).getPriority();
 
@@ -187,10 +194,11 @@ public class RequiredActionsTest extends AbstractAuthenticationTest {
         RequiredActionConfigInfoRepresentation requiredActionConfigDescription = authMgmtResource.getRequiredActionConfigDescription(providerId);
         Assertions.assertNotNull(requiredActionConfigDescription);
         Assertions.assertNotNull(requiredActionConfigDescription.getProperties());
-        Assertions.assertTrue(requiredActionConfigDescription.getProperties().size() == 2);
+        Assertions.assertEquals(3, requiredActionConfigDescription.getProperties().size());
     }
 
     @Test
+    @DatabaseTest
     public void testCRUDConfigurableRequiredAction() {
         int lastPriority = authMgmtResource.getRequiredActions().get(authMgmtResource.getRequiredActions().size() - 1).getPriority();
 

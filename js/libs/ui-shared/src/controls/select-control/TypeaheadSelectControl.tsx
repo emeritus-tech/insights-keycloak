@@ -50,6 +50,7 @@ export const TypeaheadSelectControl = <
   placeholderText,
   onFilter,
   variant,
+  isFullWidth = true,
   ...rest
 }: SelectControlProps<T, P>) => {
   const {
@@ -169,6 +170,7 @@ export const TypeaheadSelectControl = <
 
   return (
     <FormLabel
+      id={id}
       name={name}
       label={label}
       isRequired={required}
@@ -198,14 +200,14 @@ export const TypeaheadSelectControl = <
             toggle={(ref) => (
               <MenuToggle
                 ref={ref}
-                id={id || name.slice(name.lastIndexOf(".") + 1)}
+                id={id || name}
                 variant="typeahead"
                 onClick={() => {
                   setOpen(!open);
                   textInputRef.current?.focus();
                 }}
                 isExpanded={open}
-                isFullWidth
+                isFullWidth={isFullWidth}
                 status={get(errors, name) ? MenuToggleStatus.danger : undefined}
               >
                 <TextInputGroup isPlain>
@@ -271,7 +273,7 @@ export const TypeaheadSelectControl = <
                         onClick={() => {
                           setFilterValue("");
                           field.onChange(isTypeaheadMulti ? [] : "");
-                          textInputRef?.current?.focus();
+                          textInputRef.current?.focus();
                         }}
                         aria-label="Clear input value"
                       >
@@ -302,6 +304,11 @@ export const TypeaheadSelectControl = <
                   value={key(option)}
                   isFocused={focusedItemIndex === index}
                   isActive={field.value.includes(getValue(option))}
+                  description={
+                    !isString(option) && "description" in option
+                      ? option.description
+                      : undefined
+                  }
                 >
                   {getValue(option)}
                 </SelectOption>

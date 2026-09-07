@@ -18,9 +18,11 @@
 
 package org.keycloak.testsuite.client;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+
 import org.keycloak.OAuth2Constants;
 import org.keycloak.OAuthErrorException;
 import org.keycloak.authentication.authenticators.client.ClientIdAndSecretAuthenticator;
@@ -35,8 +37,6 @@ import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.oidc.OIDCClientRepresentation;
 import org.keycloak.services.clientpolicy.ClientPolicyException;
 import org.keycloak.services.clientpolicy.condition.AnyClientConditionFactory;
-import org.keycloak.testsuite.Assert;
-import org.keycloak.testsuite.AssertEvents;
 import org.keycloak.testsuite.client.resources.TestApplicationResourceUrls;
 import org.keycloak.testsuite.util.ClientPoliciesUtil;
 import org.keycloak.testsuite.util.MutualTLSUtils;
@@ -44,29 +44,29 @@ import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.testsuite.util.oauth.AuthorizationEndpointResponse;
 import org.keycloak.testsuite.util.oauth.PkceGenerator;
 
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.jupiter.api.Assertions;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 import static org.keycloak.testsuite.util.ClientPoliciesUtil.createAnyClientConditionConfig;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class OAuth2_1ConfidentialClientTest extends AbstractFAPITest {
 
     private static final String OAUTH2_1_CONFIDENTIAL_CLIENT_PROFILE_NAME = "oauth-2-1-for-confidential-client";
 
-    private String validRedirectUri;;
+    private String validRedirectUri;
 
     private PkceGenerator pkceGenerator;
 
     @Before
     public void setupValidateRedirectUri() {
-        validRedirectUri = AssertEvents.DEFAULT_REDIRECT_URI.replace("localhost", "127.0.0.1");
+        validRedirectUri = oauth.getRedirectUri().replace("localhost", "127.0.0.1");
     }
 
     @After
@@ -113,11 +113,12 @@ public class OAuth2_1ConfidentialClientTest extends AbstractFAPITest {
     @Test
     public void testOAuth2_1NotAllowResourceOwnerPasswordCredentialsGrant() throws Exception {
         String clientId = generateSuffixedName(CLIENT_NAME);
-        String cId = createClientByAdmin(clientId, (ClientRepresentation clientRep) -> {
+        createClientByAdmin(clientId, (ClientRepresentation clientRep) -> {
             clientRep.setClientAuthenticatorType(X509ClientAuthenticator.PROVIDER_ID);
             OIDCAdvancedConfigWrapper clientConfig = OIDCAdvancedConfigWrapper.fromClientRepresentation(clientRep);
             clientConfig.setRequestUris(Collections.singletonList(TestApplicationResourceUrls.clientRequestUri()));
             clientConfig.setTlsClientAuthSubjectDn(MutualTLSUtils.DEFAULT_KEYSTORE_SUBJECT_DN);
+            clientConfig.setTlsClientAuthCASubjectDn(MutualTLSUtils.CA_CERTIFICATE_SUBJECT_DN);
             clientConfig.setAllowRegexPatternComparison(false);
             clientRep.setDirectAccessGrantsEnabled(true);
         });
@@ -141,9 +142,7 @@ public class OAuth2_1ConfidentialClientTest extends AbstractFAPITest {
 
         // register client with clientIdAndSecret - fail
         try {
-            createClientByAdmin("invalid", (ClientRepresentation clientRep) -> {
-                clientRep.setClientAuthenticatorType(ClientIdAndSecretAuthenticator.PROVIDER_ID);
-            });
+            createClientByAdmin("invalid", (ClientRepresentation clientRep) -> clientRep.setClientAuthenticatorType(ClientIdAndSecretAuthenticator.PROVIDER_ID));
             fail();
         } catch (ClientPolicyException e) {
             assertEquals(OAuthErrorException.INVALID_CLIENT_METADATA, e.getMessage());
@@ -156,6 +155,7 @@ public class OAuth2_1ConfidentialClientTest extends AbstractFAPITest {
             OIDCAdvancedConfigWrapper clientConfig = OIDCAdvancedConfigWrapper.fromClientRepresentation(clientRep);
             clientConfig.setRequestUris(Collections.singletonList(TestApplicationResourceUrls.clientRequestUri()));
             clientConfig.setTlsClientAuthSubjectDn(MutualTLSUtils.DEFAULT_KEYSTORE_SUBJECT_DN);
+            clientConfig.setTlsClientAuthCASubjectDn(MutualTLSUtils.CA_CERTIFICATE_SUBJECT_DN);
             clientConfig.setAllowRegexPatternComparison(false);
             clientRep.setRedirectUris(Collections.singletonList(validRedirectUri.replace(":8543/", "/")));
         });
@@ -190,7 +190,7 @@ public class OAuth2_1ConfidentialClientTest extends AbstractFAPITest {
         // setup profiles and policies
         setupPolicyOAuth2_1ConfidentialClientForAllClient();
 
-        faiilUpdateRedirectUrisDynamically(clientId, List.of("https://dev.example.com:8443/*"));
+        failUpdateRedirectUrisDynamically(clientId, List.of("https://dev.example.com:8443/*"));
         successUpdateRedirectUrisByAdmin(cId,
                 List.of("https://dev.example.com:8443/callback", "https://[::1]/auth/admin",
                         "com.example.app:/oauth2redirect/example-provider", "https://127.0.0.1/auth/admin"));
@@ -216,7 +216,7 @@ public class OAuth2_1ConfidentialClientTest extends AbstractFAPITest {
 
         AccessTokenResponse tokenResponse = oauth.accessTokenRequest(res.getCode()).codeVerifier(pkceGenerator.getCodeVerifier()).send();
         AccessToken accessToken = oauth.verifyToken(tokenResponse.getAccessToken());
-        Assert.assertNotNull(accessToken.getConfirmation().getCertThumbprint());
+        Assertions.assertNotNull(accessToken.getConfirmation().getCertThumbprint());
 
         oauth.logoutForm().idTokenHint(tokenResponse.getIdToken()).open();
     }
@@ -249,10 +249,11 @@ public class OAuth2_1ConfidentialClientTest extends AbstractFAPITest {
         clientRep.setDirectAccessGrantsEnabled(false);
         clientConfig.setRequestUris(Collections.singletonList(TestApplicationResourceUrls.clientRequestUri()));
         clientConfig.setTlsClientAuthSubjectDn(MutualTLSUtils.DEFAULT_KEYSTORE_SUBJECT_DN);
+            clientConfig.setTlsClientAuthCASubjectDn(MutualTLSUtils.CA_CERTIFICATE_SUBJECT_DN);
         clientConfig.setAllowRegexPatternComparison(false);
         clientConfig.setPkceCodeChallengeMethod(OAuth2Constants.PKCE_METHOD_S256);
         clientConfig.setUseMtlsHoKToken(true);
-    };
+    }
 
     private String generateNonce() {
         return SecretGenerator.getInstance().randomString(16);
@@ -281,7 +282,7 @@ public class OAuth2_1ConfidentialClientTest extends AbstractFAPITest {
         }
     }
 
-    private void faiilUpdateRedirectUrisDynamically(String clientId, List<String> redirectUrisList) {
+    private void failUpdateRedirectUrisDynamically(String clientId, List<String> redirectUrisList) {
         try {
             updateClientDynamically(clientId, (OIDCClientRepresentation clientRep) ->
                     clientRep.setRedirectUris(redirectUrisList));
@@ -292,7 +293,7 @@ public class OAuth2_1ConfidentialClientTest extends AbstractFAPITest {
     }
 
     private void failAuthorizationRequest(String clientId, String redirectUri) {
-        oauth.clientId(clientId);
+        oauth.client(clientId);
         oauth.redirectUri(redirectUri);
         oauth.openLoginForm();
         assertTrue(errorPage.isCurrent());

@@ -28,6 +28,7 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+
 import org.keycloak.representations.idm.OrganizationRepresentation;
 
 /**
@@ -58,8 +59,8 @@ public interface OrganizationsResource {
     /**
      * Returns organizations in the realm.
      *
-     * @param first index of the first element (pagination offset).
-     * @param max the maximum number of results.
+     * @param firstResult index of the first element (pagination offset).
+     * @param maxResults the maximum number of results.
      * @return a list containing the organizations.
      */
     @GET
@@ -149,6 +150,51 @@ public interface OrganizationsResource {
             @QueryParam("first") Integer first,
             @QueryParam("max") Integer max
     );
+
+    /**
+     * Counts organizations by search.
+     * @param search text to look for.
+     * @return the number of organizations that match the search.
+     * @since Keycloak 26.3
+     */
+    @GET
+    @Path("count")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_JSON)
+    long count(@QueryParam("search") String search);
+
+    /**
+     * Counts organizations by search.
+     * @param search text to look for.
+     * @param exact if {@code true}, the organizations will be searched using exact match for the {@code search} param - i.e.
+     *              either the organization name or one of its domains must match exactly the {@code search} param. If false,
+     *              the method returns all organizations whose name or (domains) partially match the {@code search} param.
+     * @return the number of organizations that match the search.
+     * @since Keycloak 26.3
+     */
+    @GET
+    @Path("count")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_JSON)
+    long count(
+            @QueryParam("search") String search,
+            @QueryParam("exact") Boolean exact
+    );
+
+    /**
+     * Counts all organizations that contain attributes matching the specified query.
+     * @param searchQuery a query to search for organization attributes, in the format 'key1:value2 key2:value2'.
+     * @return the number of the organizations that match the attribute query.
+     * @since Keycloak 26.3
+     */
+    @GET
+    @Path("count")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_JSON)
+    long countByAttribute(
+            @QueryParam("q") String searchQuery
+    );
+
 
     @Path("members")
     OrganizationsMembersResource members();

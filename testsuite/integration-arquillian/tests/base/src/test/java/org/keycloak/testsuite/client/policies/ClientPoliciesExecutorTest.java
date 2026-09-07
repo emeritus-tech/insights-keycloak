@@ -17,22 +17,7 @@
 
 package org.keycloak.testsuite.client.policies;
 
-import static org.hamcrest.Matchers.emptyOrNullString;
-import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-import static org.keycloak.testsuite.admin.AbstractAdminTest.loadJson;
-import static org.keycloak.testsuite.util.ClientPoliciesUtil.createAnyClientConditionConfig;
-import static org.keycloak.testsuite.util.ClientPoliciesUtil.createClientRolesConditionConfig;
-import static org.keycloak.testsuite.util.ClientPoliciesUtil.createClientUpdateContextConditionConfig;
-import static org.keycloak.testsuite.util.ClientPoliciesUtil.createSecureClientAuthenticatorExecutorConfig;
-import static org.keycloak.testsuite.util.ClientPoliciesUtil.createSecureRequestObjectExecutorConfig;
-import static org.keycloak.testsuite.util.ClientPoliciesUtil.createSecureResponseTypeExecutor;
-import static org.keycloak.testsuite.util.ClientPoliciesUtil.createSecureSigningAlgorithmEnforceExecutorConfig;
-import static org.keycloak.testsuite.util.ClientPoliciesUtil.createSecureSigningAlgorithmForSignedJwtEnforceExecutorConfig;
-
+import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.PrivateKey;
 import java.security.PublicKey;
@@ -42,27 +27,29 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 import jakarta.ws.rs.BadRequestException;
 
-import org.apache.http.HttpResponse;
-import org.jboss.arquillian.graphene.page.Page;
-import org.junit.Assert;
-import org.junit.Test;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.OAuthErrorException;
 import org.keycloak.admin.client.resource.ClientResource;
+import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.authentication.authenticators.client.ClientIdAndSecretAuthenticator;
 import org.keycloak.authentication.authenticators.client.JWTClientAuthenticator;
 import org.keycloak.authentication.authenticators.client.JWTClientSecretAuthenticator;
 import org.keycloak.authentication.authenticators.client.X509ClientAuthenticator;
 import org.keycloak.client.registration.ClientRegistrationException;
 import org.keycloak.common.Profile;
+import org.keycloak.common.util.KeyUtils;
 import org.keycloak.crypto.Algorithm;
+import org.keycloak.crypto.SignatureSignerContext;
 import org.keycloak.events.Details;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventType;
+import org.keycloak.jose.jws.JWSBuilder;
 import org.keycloak.jose.jws.JWSInput;
 import org.keycloak.models.AdminRoles;
 import org.keycloak.models.CibaConfig;
@@ -72,9 +59,11 @@ import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.protocol.oidc.OIDCAdvancedConfigWrapper;
 import org.keycloak.protocol.oidc.OIDCConfigAttributes;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
+import org.keycloak.protocol.oidc.utils.OIDCResponseMode;
 import org.keycloak.protocol.oidc.utils.OIDCResponseType;
 import org.keycloak.representations.AuthorizationResponseToken;
 import org.keycloak.representations.IDToken;
+import org.keycloak.representations.JsonWebToken;
 import org.keycloak.representations.RefreshToken;
 import org.keycloak.representations.idm.ClientPolicyExecutorConfigurationRepresentation;
 import org.keycloak.representations.idm.ClientRepresentation;
@@ -88,6 +77,7 @@ import org.keycloak.services.clientpolicy.ClientPolicyException;
 import org.keycloak.services.clientpolicy.condition.AnyClientConditionFactory;
 import org.keycloak.services.clientpolicy.condition.ClientRolesConditionFactory;
 import org.keycloak.services.clientpolicy.condition.ClientUpdaterContextConditionFactory;
+import org.keycloak.services.clientpolicy.executor.SecureClientAuthenticationAssertionExecutorFactory;
 import org.keycloak.services.clientpolicy.executor.SecureClientAuthenticatorExecutorFactory;
 import org.keycloak.services.clientpolicy.executor.SecureClientUrisExecutorFactory;
 import org.keycloak.services.clientpolicy.executor.SecureLogoutExecutorFactory;
@@ -98,28 +88,62 @@ import org.keycloak.services.clientpolicy.executor.SecureResponseTypeExecutorFac
 import org.keycloak.services.clientpolicy.executor.SecureSessionEnforceExecutorFactory;
 import org.keycloak.services.clientpolicy.executor.SecureSigningAlgorithmExecutorFactory;
 import org.keycloak.services.clientpolicy.executor.SecureSigningAlgorithmForSignedJwtExecutorFactory;
-import org.keycloak.testsuite.admin.ApiUtil;
+import org.keycloak.services.clientpolicy.executor.TlsClientAuthCASubjectDNExecutorFactory;
+import org.keycloak.testframework.events.EventAssertion;
+import org.keycloak.testframework.realm.ClientBuilder;
+import org.keycloak.testframework.realm.RoleBuilder;
+import org.keycloak.testframework.realm.UserBuilder;
+import org.keycloak.testsuite.admin.AdminApiUtil;
 import org.keycloak.testsuite.arquillian.annotation.EnableFeature;
 import org.keycloak.testsuite.client.resources.TestApplicationResourceUrls;
 import org.keycloak.testsuite.client.resources.TestOIDCEndpointsApplicationResource;
+import org.keycloak.testsuite.pages.AppPage;
 import org.keycloak.testsuite.pages.ErrorPage;
 import org.keycloak.testsuite.pages.LogoutConfirmPage;
-import org.keycloak.testsuite.pages.OAuth2DeviceVerificationPage;
 import org.keycloak.testsuite.pages.OAuthGrantPage;
 import org.keycloak.testsuite.rest.resource.TestingOIDCEndpointsApplicationResource.AuthorizationEndpointRequestObject;
-import org.keycloak.testsuite.util.ClientBuilder;
 import org.keycloak.testsuite.util.ClientPoliciesUtil.ClientPoliciesBuilder;
 import org.keycloak.testsuite.util.ClientPoliciesUtil.ClientPolicyBuilder;
 import org.keycloak.testsuite.util.ClientPoliciesUtil.ClientProfileBuilder;
 import org.keycloak.testsuite.util.ClientPoliciesUtil.ClientProfilesBuilder;
+import org.keycloak.testsuite.util.SignatureSignerUtil;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.testsuite.util.oauth.AuthorizationEndpointResponse;
+import org.keycloak.testsuite.util.oauth.OAuthClient;
 import org.keycloak.testsuite.util.oauth.ParResponse;
-import org.keycloak.testsuite.util.RoleBuilder;
-import org.keycloak.testsuite.util.UserBuilder;
+import org.keycloak.testsuite.util.oauth.PkceGenerator;
 import org.keycloak.util.JsonSerialization;
+import org.keycloak.util.TokenUtil;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import org.apache.http.HttpResponse;
+import org.apache.http.NameValuePair;
+import org.apache.http.client.entity.UrlEncodedFormEntity;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.message.BasicNameValuePair;
+import org.hamcrest.MatcherAssert;
+import org.hamcrest.Matchers;
+import org.jboss.arquillian.graphene.page.Page;
+import org.junit.Test;
+import org.junit.jupiter.api.Assertions;
+
+import static org.keycloak.testsuite.AbstractAdminTest.loadJson;
+import static org.keycloak.testsuite.util.ClientPoliciesUtil.createAnyClientConditionConfig;
+import static org.keycloak.testsuite.util.ClientPoliciesUtil.createClientRolesConditionConfig;
+import static org.keycloak.testsuite.util.ClientPoliciesUtil.createClientUpdateContextConditionConfig;
+import static org.keycloak.testsuite.util.ClientPoliciesUtil.createSecureClientAuthenticatorExecutorConfig;
+import static org.keycloak.testsuite.util.ClientPoliciesUtil.createSecureRequestObjectExecutorConfig;
+import static org.keycloak.testsuite.util.ClientPoliciesUtil.createSecureResponseTypeExecutor;
+import static org.keycloak.testsuite.util.ClientPoliciesUtil.createSecureSigningAlgorithmEnforceExecutorConfig;
+import static org.keycloak.testsuite.util.ClientPoliciesUtil.createSecureSigningAlgorithmForSignedJwtEnforceExecutorConfig;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * This test class is for testing an executor of client policies.
@@ -130,10 +154,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
 
     @Page
-    protected OAuth2DeviceVerificationPage verificationPage;
+    protected OAuthGrantPage grantPage;
 
     @Page
-    protected OAuthGrantPage grantPage;
+    protected AppPage appPage;
 
     @Page
     protected ErrorPage errorPage;
@@ -166,7 +190,7 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         user.setUsername("create-clients");
         user.setCredentials(credentials);
         user.setClientRoles(Collections.singletonMap(Constants.REALM_MANAGEMENT_CLIENT_ID, Collections.singletonList(AdminRoles.CREATE_CLIENT)));
-        user.setGroups(Arrays.asList("topGroup")); // defined in testrealm.json
+        user.setGroups(List.of("topGroup")); // defined in testrealm.json
 
         users.add(user);
 
@@ -231,17 +255,16 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
 
         // create a client without client role. It should be successful (policy not applied)
         String clientId = generateSuffixedName(CLIENT_NAME);
-        String cId = createClientByAdmin(clientId, (ClientRepresentation clientRep) -> {
-            clientRep.setSecret("secret");
-        });
+        createClientByAdmin(clientId, (ClientRepresentation clientRep) -> clientRep.setSecret("secret"));
 
         // Login with clientIdAndSecret. It should be successful (policy not applied)
         successfulLoginAndLogout(clientId, "secret");
 
         // Add role to the client
-        ClientResource clientResource = ApiUtil.findClientByClientId(adminClient.realm(REALM_NAME), clientId);
+        ClientResource clientResource = AdminApiUtil.findClientByClientId(adminClient.realm(REALM_NAME), clientId);
+        assert clientResource != null;
         ClientRepresentation clientRep = clientResource.toRepresentation();
-        Assert.assertEquals(ClientIdAndSecretAuthenticator.PROVIDER_ID, clientRep.getClientAuthenticatorType());
+        Assertions.assertEquals(ClientIdAndSecretAuthenticator.PROVIDER_ID, clientRep.getClientAuthenticatorType());
         clientResource.roles().create(RoleBuilder.create().name(roleAlphaName).build());
 
         // Not allowed to client authentication with clientIdAndSecret anymore. Client matches policy now
@@ -269,7 +292,7 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         json = (new ClientPoliciesBuilder()).addPolicy(
                 (new ClientPolicyBuilder()).createPolicy(POLICY_NAME, "A Primeira Politica", Boolean.TRUE)
                         .addCondition(ClientRolesConditionFactory.PROVIDER_ID,
-                                createClientRolesConditionConfig(Arrays.asList(SAMPLE_CLIENT_ROLE)))
+                                createClientRolesConditionConfig(List.of(SAMPLE_CLIENT_ROLE)))
                         .addProfile(PROFILE_NAME)
                         .toRepresentation()
         ).toString();
@@ -291,23 +314,34 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         AuthorizationEndpointResponse authorizationEndpointResponse = oauth.parseLoginResponse();
         assertEquals(OAuthErrorException.INVALID_REQUEST, authorizationEndpointResponse.getError());
         assertEquals("invalid response_type", authorizationEndpointResponse.getErrorDescription());
-        events.expectClientPolicyError(EventType.LOGIN_ERROR, OAuthErrorException.INVALID_REQUEST,
-                        Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST,
-                        "invalid response_type").client(clientId).user((String) null).assertEvent();
+        EventAssertion.assertError(events.poll())
+                .type(EventType.LOGIN_ERROR)
+                .error(OAuthErrorException.INVALID_REQUEST)
+                .details(Details.REASON, Details.CLIENT_POLICY_ERROR)
+                .details(Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST)
+                .details(Details.CLIENT_POLICY_ERROR_DETAIL, "invalid response_type")
+                .clientId(clientId)
+                .userId(null);
 
         oauth.responseType(OIDCResponseType.CODE + " " + OIDCResponseType.ID_TOKEN);
         oauth.loginForm().nonce("vbwe566fsfffds").doLogin(TEST_USER_NAME, TEST_USER_PASSWORD);
 
-        EventRepresentation loginEvent = events.expectLogin().client(clientId).assertEvent();
+        EventRepresentation loginEvent = EventAssertion.expectLoginSuccess(events.poll()).clientId(clientId).getEvent();
         String sessionId = loginEvent.getSessionId();
         String codeId = loginEvent.getDetails().get(Details.CODE_ID);
         String code = oauth.parseLoginResponse().getCode();
         AccessTokenResponse res = oauth.doAccessTokenRequest(code);
         assertEquals(200, res.getStatusCode());
-        events.expectCodeToToken(codeId, sessionId).client(clientId).assertEvent();
+        EventAssertion.expectCodeToTokenSuccess(events.poll())
+                .sessionId(sessionId)
+                .clientId(clientId)
+                .details(Details.CODE_ID, codeId)
+                .details(Details.REFRESH_TOKEN_TYPE, TokenUtil.TOKEN_TYPE_REFRESH)
+                .details(Details.CLIENT_AUTH_METHOD, ClientIdAndSecretAuthenticator.PROVIDER_ID);
 
         oauth.doLogout(res.getRefreshToken());
-        events.expectLogout(sessionId).client(clientId).clearDetails().assertEvent();
+        EventAssertion.assertSuccess(events.poll()).type(EventType.LOGOUT)
+                .sessionId(sessionId).clientId(clientId).withoutDetails(Details.REDIRECT_URI);
 
         // update profiles
         json = (new ClientProfilesBuilder()).addProfile(
@@ -320,16 +354,22 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         oauth.responseType(OIDCResponseType.CODE + " " + OIDCResponseType.ID_TOKEN + " " + OIDCResponseType.TOKEN); // token response type allowed
         oauth.loginForm().nonce("cie8cjcwiw").doLogin(TEST_USER_NAME, TEST_USER_PASSWORD);
 
-        loginEvent = events.expectLogin().client(clientId).assertEvent();
+        loginEvent = EventAssertion.expectLoginSuccess(events.poll()).clientId(clientId).getEvent();
         sessionId = loginEvent.getSessionId();
         codeId = loginEvent.getDetails().get(Details.CODE_ID);
         code = oauth.parseLoginResponse().getCode();
         res = oauth.doAccessTokenRequest(code);
         assertEquals(200, res.getStatusCode());
-        events.expectCodeToToken(codeId, sessionId).client(clientId).assertEvent();
+        EventAssertion.expectCodeToTokenSuccess(events.poll())
+                .sessionId(sessionId)
+                .clientId(clientId)
+                .details(Details.CODE_ID, codeId)
+                .details(Details.REFRESH_TOKEN_TYPE, TokenUtil.TOKEN_TYPE_REFRESH)
+                .details(Details.CLIENT_AUTH_METHOD, ClientIdAndSecretAuthenticator.PROVIDER_ID);
 
         oauth.doLogout(res.getRefreshToken());
-        events.expectLogout(sessionId).client(clientId).clearDetails().assertEvent();
+        EventAssertion.assertSuccess(events.poll()).type(EventType.LOGOUT)
+                .sessionId(sessionId).clientId(clientId).withoutDetails(Details.REDIRECT_URI);
 
         // shall allow code using response_mode jwt
         oauth.responseType(OIDCResponseType.CODE);
@@ -377,7 +417,7 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
                                         ClientUpdaterContextConditionFactory.BY_INITIAL_ACCESS_TOKEN,
                                         ClientUpdaterContextConditionFactory.BY_REGISTRATION_ACCESS_TOKEN)))
                         .addCondition(ClientRolesConditionFactory.PROVIDER_ID,
-                                createClientRolesConditionConfig(Arrays.asList(SAMPLE_CLIENT_ROLE)))
+                                createClientRolesConditionConfig(List.of(SAMPLE_CLIENT_ROLE)))
                         .addProfile(PROFILE_NAME)
                         .toRepresentation()
         ).toString();
@@ -385,9 +425,7 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
 
         // create by Admin REST API
         try {
-            createClientByAdmin(generateSuffixedName("App-by-Admin"), (ClientRepresentation clientRep) -> {
-                clientRep.setSecret("secret");
-            });
+            createClientByAdmin(generateSuffixedName("App-by-Admin"), (ClientRepresentation clientRep) -> clientRep.setSecret("secret"));
             fail();
         } catch (ClientPolicyException e) {
             assertEquals(OAuthErrorException.INVALID_CLIENT_METADATA, e.getMessage());
@@ -424,14 +462,19 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         AuthorizationEndpointResponse authorizationEndpointResponse = oauth.parseLoginResponse();
         assertEquals(OAuthErrorException.INVALID_REQUEST, authorizationEndpointResponse.getError());
         assertEquals("invalid response_type", authorizationEndpointResponse.getErrorDescription());
-        events.expectClientPolicyError(EventType.LOGIN_ERROR, OAuthErrorException.INVALID_REQUEST,
-                Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST,
-                "invalid response_type").client(clientId).user((String) null).assertEvent();
+        EventAssertion.assertError(events.poll())
+                .type(EventType.LOGIN_ERROR)
+                .error(OAuthErrorException.INVALID_REQUEST)
+                .details(Details.REASON, Details.CLIENT_POLICY_ERROR)
+                .details(Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST)
+                .details(Details.CLIENT_POLICY_ERROR_DETAIL, "invalid response_type")
+                .clientId(clientId)
+                .userId(null);
 
         oauth.responseType(OIDCResponseType.CODE + " " + OIDCResponseType.ID_TOKEN);
         oauth.loginForm().nonce("LIVieviDie028f").doLogin(TEST_USER_NAME, TEST_USER_PASSWORD);
 
-        EventRepresentation loginEvent = events.expectLogin().client(clientId).assertEvent();
+        EventRepresentation loginEvent = EventAssertion.expectLoginSuccess(events.poll()).clientId(clientId).getEvent();
         String sessionId = loginEvent.getSessionId();
         String codeId = loginEvent.getDetails().get(Details.CODE_ID);
         authorizationEndpointResponse = oauth.parseLoginResponse();
@@ -439,28 +482,34 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
 
         IDToken idToken = oauth.verifyIDToken(authorizationEndpointResponse.getIdToken());
         // confirm ID token as detached signature does not include authenticated user's claims
-        Assert.assertNull(idToken.getEmailVerified());
-        Assert.assertNull(idToken.getName());
-        Assert.assertNull(idToken.getPreferredUsername());
-        Assert.assertNull(idToken.getGivenName());
-        Assert.assertNull(idToken.getFamilyName());
-        Assert.assertNull(idToken.getEmail());
+        Assertions.assertNull(idToken.getEmailVerified());
+        Assertions.assertNull(idToken.getName());
+        Assertions.assertNull(idToken.getPreferredUsername());
+        Assertions.assertNull(idToken.getGivenName());
+        Assertions.assertNull(idToken.getFamilyName());
+        Assertions.assertNull(idToken.getEmail());
         assertEquals("LIVieviDie028f", idToken.getNonce());
         // confirm an access token not returned
-        Assert.assertNull(authorizationEndpointResponse.getAccessToken());
+        Assertions.assertNull(authorizationEndpointResponse.getAccessToken());
 
         AccessTokenResponse res = oauth.doAccessTokenRequest(code);
         assertEquals(200, res.getStatusCode());
-        events.expectCodeToToken(codeId, sessionId).client(clientId).assertEvent();
+        EventAssertion.expectCodeToTokenSuccess(events.poll())
+                .sessionId(sessionId)
+                .clientId(clientId)
+                .details(Details.CODE_ID, codeId)
+                .details(Details.REFRESH_TOKEN_TYPE, TokenUtil.TOKEN_TYPE_REFRESH)
+                .details(Details.CLIENT_AUTH_METHOD, ClientIdAndSecretAuthenticator.PROVIDER_ID);
 
         oauth.doLogout(res.getRefreshToken());
-        events.expectLogout(sessionId).client(clientId).clearDetails().assertEvent();
+        EventAssertion.assertSuccess(events.poll()).type(EventType.LOGOUT)
+                .sessionId(sessionId).clientId(clientId).withoutDetails(Details.REDIRECT_URI);
     }
 
     @Test
     public void testSecureRequestObjectExecutor() throws Exception {
-        Integer availablePeriod = Integer.valueOf(SecureRequestObjectExecutor.DEFAULT_AVAILABLE_PERIOD + 400);
-        Integer allowedClockSkew = Integer.valueOf(SecureRequestObjectExecutor.DEAULT_ALLOWED_CLOCK_SKEW + 15); // 30 sec
+        Integer availablePeriod = SecureRequestObjectExecutor.DEFAULT_AVAILABLE_PERIOD + 400;
+        Integer allowedClockSkew = SecureRequestObjectExecutor.DEFAULT_ALLOWED_CLOCK_SKEW + 15; // 30 sec
 
         // register profiles
         String json = (new ClientProfilesBuilder()).addProfile(
@@ -475,7 +524,7 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         json = (new ClientPoliciesBuilder()).addPolicy(
                 (new ClientPolicyBuilder()).createPolicy(POLICY_NAME, "Prva Politika", Boolean.TRUE)
                         .addCondition(ClientRolesConditionFactory.PROVIDER_ID,
-                                createClientRolesConditionConfig(Arrays.asList(SAMPLE_CLIENT_ROLE)))
+                                createClientRolesConditionConfig(List.of(SAMPLE_CLIENT_ROLE)))
                         .addProfile(PROFILE_NAME)
                         .toRepresentation()
         ).toString();
@@ -485,22 +534,26 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         String clientSecret = "secret";
         String cid = createClientByAdmin(clientId, (ClientRepresentation clientRep) -> {
             clientRep.setSecret(clientSecret);
-            OIDCAdvancedConfigWrapper.fromClientRepresentation(clientRep).setRequestUris(Arrays.asList(TestApplicationResourceUrls.clientRequestUri()));
+            OIDCAdvancedConfigWrapper.fromClientRepresentation(clientRep).setRequestUris(Collections.singletonList(TestApplicationResourceUrls.clientRequestUri()));
         });
         adminClient.realm(REALM_NAME).clients().get(cid).roles().create(RoleBuilder.create().name(SAMPLE_CLIENT_ROLE).build());
 
-        oauth.clientId(clientId);
+        oauth.client(clientId);
         AuthorizationEndpointRequestObject requestObject;
 
-        // check whether whether request object exists
+        // check whether request object exists
         oauth.openLoginForm();
         AuthorizationEndpointResponse authorizationEndpointResponse = oauth.parseLoginResponse();
         assertEquals(OAuthErrorException.INVALID_REQUEST, authorizationEndpointResponse.getError());
         assertEquals("Missing parameter: 'request' or 'request_uri'", authorizationEndpointResponse.getErrorDescription());
-        events.expectClientPolicyError(EventType.LOGIN_ERROR, OAuthErrorException.INVALID_REQUEST,
-                Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST,
-                "Missing parameter: 'request' or 'request_uri'").client(clientId).user((String) null)
-                .assertEvent();
+        EventAssertion.assertError(events.poll())
+                .type(EventType.LOGIN_ERROR)
+                .error(OAuthErrorException.INVALID_REQUEST)
+                .details(Details.REASON, Details.CLIENT_POLICY_ERROR)
+                .details(Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST)
+                .details(Details.CLIENT_POLICY_ERROR_DETAIL, "Missing parameter: 'request' or 'request_uri'")
+                .clientId(clientId)
+                .userId(null);
 
         // check whether request_uri is https scheme
         // cannot test because existing AuthorizationEndpoint check and return error before executing client policy
@@ -519,10 +572,14 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         authorizationEndpointResponse = oauth.parseLoginResponse();
         assertEquals(OAuthErrorException.INVALID_REQUEST, authorizationEndpointResponse.getError());
         assertEquals("Invalid parameter. Parameters in 'request' object not matching with request parameters", authorizationEndpointResponse.getErrorDescription());
-        events.expectClientPolicyError(EventType.LOGIN_ERROR, OAuthErrorException.INVALID_REQUEST,
-                Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST,
-                "Invalid parameter. Parameters in 'request' object not matching with request parameters")
-                .client(clientId).user((String) null).assertEvent();
+        EventAssertion.assertError(events.poll())
+                .type(EventType.LOGIN_ERROR)
+                .error(OAuthErrorException.INVALID_REQUEST)
+                .details(Details.REASON, Details.CLIENT_POLICY_ERROR)
+                .details(Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST)
+                .details(Details.CLIENT_POLICY_ERROR_DETAIL, "Invalid parameter. Parameters in 'request' object not matching with request parameters")
+                .clientId(clientId)
+                .userId(null);
 
         // check whether client_id exists in both query parameter and request object
         requestObject = createValidRequestObjectForSecureRequestObjectExecutor(clientId);
@@ -532,10 +589,14 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         authorizationEndpointResponse = oauth.parseLoginResponse();
         assertEquals(OAuthErrorException.INVALID_REQUEST, authorizationEndpointResponse.getError());
         assertEquals("Invalid parameter. Parameters in 'request' object not matching with request parameters", authorizationEndpointResponse.getErrorDescription());
-        events.expectClientPolicyError(EventType.LOGIN_ERROR, OAuthErrorException.INVALID_REQUEST,
-                Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST,
-                "Invalid parameter. Parameters in 'request' object not matching with request parameters")
-                .client(clientId).user((String) null).assertEvent();
+        EventAssertion.assertError(events.poll())
+                .type(EventType.LOGIN_ERROR)
+                .error(OAuthErrorException.INVALID_REQUEST)
+                .details(Details.REASON, Details.CLIENT_POLICY_ERROR)
+                .details(Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST)
+                .details(Details.CLIENT_POLICY_ERROR_DETAIL, "Invalid parameter. Parameters in 'request' object not matching with request parameters")
+                .clientId(clientId)
+                .userId(null);
 
         // check whether response_type exists in both query parameter and request object
         requestObject = createValidRequestObjectForSecureRequestObjectExecutor(clientId);
@@ -545,10 +606,13 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         authorizationEndpointResponse = oauth.parseLoginResponse();
         assertEquals(OAuthErrorException.INVALID_REQUEST, authorizationEndpointResponse.getError());
         assertEquals("Invalid parameter. Parameters in 'request' object not matching with request parameters", authorizationEndpointResponse.getErrorDescription());
-        events.expectClientPolicyError(EventType.LOGIN_ERROR, OAuthErrorException.INVALID_REQUEST,
-                Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST,
-                "Invalid parameter. Parameters in 'request' object not matching with request parameters")
-                .client(clientId).user((String) null).assertEvent();
+        EventAssertion.assertError(events.poll())
+                .type(EventType.LOGIN_ERROR)
+                .error(OAuthErrorException.INVALID_REQUEST).details(Details.REASON, Details.CLIENT_POLICY_ERROR)
+                .details(Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST)
+                .details(Details.CLIENT_POLICY_ERROR_DETAIL, "Invalid parameter. Parameters in 'request' object not matching with request parameters")
+                .clientId(clientId)
+                .userId(null);
 
         // Check scope required
         requestObject = createValidRequestObjectForSecureRequestObjectExecutor(clientId);
@@ -560,10 +624,12 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         authorizationEndpointResponse = oauth.parseLoginResponse();
         assertEquals(OAuthErrorException.INVALID_REQUEST, authorizationEndpointResponse.getError());
         assertEquals("Parameter 'scope' missing in the request parameters or in 'request' object", authorizationEndpointResponse.getErrorDescription());
-        events.expectClientPolicyError(EventType.LOGIN_ERROR, OAuthErrorException.INVALID_REQUEST,
-                Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST,
-                "Parameter 'scope' missing in the request parameters or in 'request' object")
-                .client(clientId).user((String) null).assertEvent();
+        EventAssertion.assertError(events.poll())
+                .type(EventType.LOGIN_ERROR).error(OAuthErrorException.INVALID_REQUEST)
+                .details(Details.REASON, Details.CLIENT_POLICY_ERROR)
+                .details(Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST)
+                .details(Details.CLIENT_POLICY_ERROR_DETAIL, "Parameter 'scope' missing in the request parameters or in 'request' object")
+                .clientId(clientId).userId(null);
         oauth.openid(true);
 
         // check whether "exp" claim exists
@@ -574,22 +640,22 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         authorizationEndpointResponse = oauth.parseLoginResponse();
         assertEquals(OAuthErrorException.INVALID_REQUEST_OBJECT, authorizationEndpointResponse.getError());
         assertEquals("Missing parameter in the 'request' object: exp", authorizationEndpointResponse.getErrorDescription());
-        events.expectClientPolicyError(EventType.LOGIN_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT,
-                Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT,
-                "Missing parameter in the 'request' object: exp").client(clientId).user((String) null)
-                .assertEvent();
+        EventAssertion.assertError(events.poll()).type(EventType.LOGIN_ERROR).error(OAuthErrorException.INVALID_REQUEST_OBJECT).details(Details.REASON, Details.CLIENT_POLICY_ERROR)
+                .details(Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.CLIENT_POLICY_ERROR_DETAIL, "Missing parameter in the 'request' object: exp").clientId(clientId).userId(null);
 
         // check whether request object not expired
         requestObject = createValidRequestObjectForSecureRequestObjectExecutor(clientId);
-        requestObject.exp(Long.valueOf(0));
+        requestObject.exp(0L);
         registerRequestObject(requestObject, clientId, Algorithm.ES256, true);
         oauth.loginForm().requestUri(requestUri).open();
         authorizationEndpointResponse = oauth.parseLoginResponse();
         assertEquals(OAuthErrorException.INVALID_REQUEST_OBJECT, authorizationEndpointResponse.getError());
         assertEquals("Request Expired", authorizationEndpointResponse.getErrorDescription());
-        events.expectClientPolicyError(EventType.LOGIN_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT,
-                Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT,
-                "Request Expired").client(clientId).user((String) null).assertEvent();
+        EventAssertion.assertError(events.poll()).type(EventType.LOGIN_ERROR).error(OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.REASON, Details.CLIENT_POLICY_ERROR)
+                .details(Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.CLIENT_POLICY_ERROR_DETAIL, "Request Expired").clientId(clientId).userId(null);
 
         // check whether "nbf" claim exists
         requestObject = createValidRequestObjectForSecureRequestObjectExecutor(clientId);
@@ -599,10 +665,10 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         authorizationEndpointResponse = oauth.parseLoginResponse();
         assertEquals(OAuthErrorException.INVALID_REQUEST_OBJECT, authorizationEndpointResponse.getError());
         assertEquals("Missing parameter in the 'request' object: nbf", authorizationEndpointResponse.getErrorDescription());
-        events.expectClientPolicyError(EventType.LOGIN_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT,
-                Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT,
-                "Missing parameter in the 'request' object: nbf").client(clientId).user((String) null)
-                .assertEvent();
+        EventAssertion.assertError(events.poll()).type(EventType.LOGIN_ERROR).error(OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.REASON, Details.CLIENT_POLICY_ERROR)
+                .details(Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.CLIENT_POLICY_ERROR_DETAIL, "Missing parameter in the 'request' object: nbf").clientId(clientId).userId(null);
 
         // check whether request object not yet being processed
         requestObject = createValidRequestObjectForSecureRequestObjectExecutor(clientId);
@@ -612,9 +678,10 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         authorizationEndpointResponse = oauth.parseLoginResponse();
         assertEquals(OAuthErrorException.INVALID_REQUEST_OBJECT, authorizationEndpointResponse.getError());
         assertEquals("Request not yet being processed", authorizationEndpointResponse.getErrorDescription());
-        events.expectClientPolicyError(EventType.LOGIN_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT,
-                Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT,
-                "Request not yet being processed").client(clientId).user((String) null).assertEvent();
+        EventAssertion.assertError(events.poll()).type(EventType.LOGIN_ERROR).error(OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.REASON, Details.CLIENT_POLICY_ERROR)
+                .details(Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.CLIENT_POLICY_ERROR_DETAIL, "Request not yet being processed").clientId(clientId).userId(null);
 
         // nbf ahead within allowed clock skew
         requestObject = createValidRequestObjectForSecureRequestObjectExecutor(clientId);
@@ -630,9 +697,10 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         authorizationEndpointResponse = oauth.parseLoginResponse();
         assertEquals(OAuthErrorException.INVALID_REQUEST_OBJECT, authorizationEndpointResponse.getError());
         assertEquals("Request issued in the future", authorizationEndpointResponse.getErrorDescription());
-        events.expectClientPolicyError(EventType.LOGIN_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT,
-                Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT,
-                "Request issued in the future").client(clientId).user((String) null).assertEvent();
+        EventAssertion.assertError(events.poll()).type(EventType.LOGIN_ERROR).error(OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.REASON, Details.CLIENT_POLICY_ERROR)
+                .details(Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.CLIENT_POLICY_ERROR_DETAIL, "Request issued in the future").clientId(clientId).userId(null);
 
         // iat ahead within allowed clock skew
         requestObject = createValidRequestObjectForSecureRequestObjectExecutor(clientId);
@@ -642,16 +710,16 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         
         // check whether request object's available period is short
         requestObject = createValidRequestObjectForSecureRequestObjectExecutor(clientId);
-        requestObject.exp(requestObject.getNbf() + availablePeriod.intValue() + 1);
+        requestObject.exp(requestObject.getNbf() + availablePeriod + 1);
         registerRequestObject(requestObject, clientId, Algorithm.ES256, false);
         oauth.loginForm().request(request).open();
         authorizationEndpointResponse = oauth.parseLoginResponse();
         assertEquals(OAuthErrorException.INVALID_REQUEST_OBJECT, authorizationEndpointResponse.getError());
         assertEquals("Request's available period is long", authorizationEndpointResponse.getErrorDescription());
-        events.expectClientPolicyError(EventType.LOGIN_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT,
-                Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT,
-                "Request's available period is long").client(clientId).user((String) null)
-                .assertEvent();
+        EventAssertion.assertError(events.poll()).type(EventType.LOGIN_ERROR).error(OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.REASON, Details.CLIENT_POLICY_ERROR)
+                .details(Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.CLIENT_POLICY_ERROR_DETAIL, "Request's available period is long").clientId(clientId).userId(null);
 
         // check whether "aud" claim exists
         requestObject = createValidRequestObjectForSecureRequestObjectExecutor(clientId);
@@ -661,10 +729,11 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         authorizationEndpointResponse = oauth.parseLoginResponse();
         assertEquals(OAuthErrorException.INVALID_REQUEST_OBJECT, authorizationEndpointResponse.getError());
         assertEquals("Missing parameter in the 'request' object: aud", authorizationEndpointResponse.getErrorDescription());
-        events.expectClientPolicyError(EventType.LOGIN_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT,
-                        Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT,
-                        "Missing parameter in the 'request' object: aud").client(clientId)
-                .user((String) null).assertEvent();
+        EventAssertion.assertError(events.poll()).type(EventType.LOGIN_ERROR).error(OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.REASON, Details.CLIENT_POLICY_ERROR)
+                .details(Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.CLIENT_POLICY_ERROR_DETAIL, "Missing parameter in the 'request' object: aud").clientId(clientId)
+                .userId(null);
 
         // check whether "aud" claim points to this keycloak as authz server
         requestObject = createValidRequestObjectForSecureRequestObjectExecutor(clientId);
@@ -674,10 +743,12 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         authorizationEndpointResponse = oauth.parseLoginResponse();
         assertEquals(OAuthErrorException.INVALID_REQUEST_URI, authorizationEndpointResponse.getError());
         assertEquals("Invalid parameter in the 'request' object: aud", authorizationEndpointResponse.getErrorDescription());
-        events.expectClientPolicyError(EventType.LOGIN_ERROR, OAuthErrorException.INVALID_REQUEST_URI,
-                        Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_URI,
-                        "Invalid parameter in the 'request' object: aud").client(clientId)
-                .user((String) null).assertEvent();
+        EventAssertion.assertError(events.poll()).type(EventType.LOGIN_ERROR).error(OAuthErrorException.INVALID_REQUEST_URI)
+                .details(Details.REASON, Details.CLIENT_POLICY_ERROR)
+                .details(Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_URI)
+                .details(Details.CLIENT_POLICY_ERROR_DETAIL, "Invalid parameter in the 'request' object: aud")
+                .clientId(clientId)
+                .userId(null);
 
         // confirm whether all parameters in query string are included in the request object, and have the same values
         // argument "request" are parameters overridden by parameters in request object
@@ -688,10 +759,11 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         authorizationEndpointResponse = oauth.parseLoginResponse();
         assertEquals(OAuthErrorException.INVALID_REQUEST, authorizationEndpointResponse.getError());
         assertEquals("Invalid parameter. Parameters in 'request' object not matching with request parameters", authorizationEndpointResponse.getErrorDescription());
-        events.expectClientPolicyError(EventType.LOGIN_ERROR, OAuthErrorException.INVALID_REQUEST,
-                        Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST,
-                        "Invalid parameter. Parameters in 'request' object not matching with request parameters")
-                .client(clientId).user((String) null).assertEvent();
+        EventAssertion.assertError(events.poll()).type(EventType.LOGIN_ERROR).error(OAuthErrorException.INVALID_REQUEST)
+                .details(Details.REASON, Details.CLIENT_POLICY_ERROR)
+                .details(Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST)
+                .details(Details.CLIENT_POLICY_ERROR_DETAIL, "Invalid parameter. Parameters in 'request' object not matching with request parameters")
+                .clientId(clientId).userId(null);
 
         // valid request object
         requestObject = createValidRequestObjectForSecureRequestObjectExecutor(clientId);
@@ -715,10 +787,12 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         authorizationEndpointResponse = oauth.parseLoginResponse();
         assertEquals(OAuthErrorException.INVALID_REQUEST_OBJECT, authorizationEndpointResponse.getError());
         assertEquals("Missing parameter in the 'request' object: nbf", authorizationEndpointResponse.getErrorDescription());
-        events.expectClientPolicyError(EventType.LOGIN_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT,
-                        Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT,
-                        "Missing parameter in the 'request' object: nbf").client(clientId)
-                .user((String) null).assertEvent();
+        EventAssertion.assertError(events.poll()).type(EventType.LOGIN_ERROR).error(OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.REASON, Details.CLIENT_POLICY_ERROR)
+                .details(Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.CLIENT_POLICY_ERROR_DETAIL, "Missing parameter in the 'request' object: nbf")
+                .clientId(clientId)
+                .userId(null);
 
         // check whether request object not yet being processed
         requestObject = createValidRequestObjectForSecureRequestObjectExecutor(clientId);
@@ -728,10 +802,10 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         authorizationEndpointResponse = oauth.parseLoginResponse();
         assertEquals(OAuthErrorException.INVALID_REQUEST_OBJECT, authorizationEndpointResponse.getError());
         assertEquals("Request not yet being processed", authorizationEndpointResponse.getErrorDescription());
-        events.expectClientPolicyError(EventType.LOGIN_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT,
-                        Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT,
-                        "Request not yet being processed").client(clientId).user((String) null)
-                .assertEvent();
+        EventAssertion.assertError(events.poll()).type(EventType.LOGIN_ERROR).error(OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.REASON, Details.CLIENT_POLICY_ERROR)
+                .details(Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.CLIENT_POLICY_ERROR_DETAIL, "Request not yet being processed").clientId(clientId).userId(null);
 
         // check whether request object's available period is short
         requestObject = createValidRequestObjectForSecureRequestObjectExecutor(clientId);
@@ -741,10 +815,10 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         authorizationEndpointResponse = oauth.parseLoginResponse();
         assertEquals(OAuthErrorException.INVALID_REQUEST_OBJECT, authorizationEndpointResponse.getError());
         assertEquals("Request's available period is long", authorizationEndpointResponse.getErrorDescription());
-        events.expectClientPolicyError(EventType.LOGIN_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT,
-                        Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT,
-                        "Request's available period is long").client(clientId).user((String) null)
-                .assertEvent();
+        EventAssertion.assertError(events.poll()).type(EventType.LOGIN_ERROR).error(OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.REASON, Details.CLIENT_POLICY_ERROR)
+                .details(Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.CLIENT_POLICY_ERROR_DETAIL, "Request's available period is long").clientId(clientId).userId(null);
 
         // update profile : not check "nbf"
         json = (new ClientProfilesBuilder()).addProfile(
@@ -787,15 +861,15 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         authorizationEndpointResponse = oauth.parseLoginResponse();
         assertEquals(OAuthErrorException.INVALID_REQUEST_OBJECT, authorizationEndpointResponse.getError());
         assertEquals("Request object not encrypted", authorizationEndpointResponse.getErrorDescription());
-        events.expectClientPolicyError(EventType.LOGIN_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT,
-                        Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT,
-                        "Request object not encrypted").client(clientId).user((String) null)
-                .assertEvent();
+        EventAssertion.assertError(events.poll()).type(EventType.LOGIN_ERROR).error(OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.REASON, Details.CLIENT_POLICY_ERROR)
+                .details(Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.CLIENT_POLICY_ERROR_DETAIL, "Request object not encrypted").clientId(clientId).userId(null);
     }
 
     @Test
     public void testParSecureRequestObjectExecutor() throws Exception {
-        Integer availablePeriod = Integer.valueOf(SecureRequestObjectExecutor.DEFAULT_AVAILABLE_PERIOD + 400);
+        Integer availablePeriod = SecureRequestObjectExecutor.DEFAULT_AVAILABLE_PERIOD + 400;
         // register profiles
         String json = (new ClientProfilesBuilder()).addProfile(
                 (new ClientProfileBuilder()).createProfile(PROFILE_NAME, "Prvy Profil")
@@ -809,7 +883,7 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         json = (new ClientPoliciesBuilder()).addPolicy(
                 (new ClientPolicyBuilder()).createPolicy(POLICY_NAME, "Prva Politika", Boolean.TRUE)
                         .addCondition(ClientRolesConditionFactory.PROVIDER_ID,
-                                createClientRolesConditionConfig(Arrays.asList(SAMPLE_CLIENT_ROLE)))
+                                createClientRolesConditionConfig(List.of(SAMPLE_CLIENT_ROLE)))
                         .addProfile(PROFILE_NAME)
                         .toRepresentation()
         ).toString();
@@ -819,7 +893,7 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         String clientSecret = "secret";
         String cid = createClientByAdmin(clientId, (ClientRepresentation clientRep) -> {
             clientRep.setSecret(clientSecret);
-            OIDCAdvancedConfigWrapper.fromClientRepresentation(clientRep).setRequestUris(Arrays.asList(TestApplicationResourceUrls.clientRequestUri()));
+            OIDCAdvancedConfigWrapper.fromClientRepresentation(clientRep).setRequestUris(Collections.singletonList(TestApplicationResourceUrls.clientRequestUri()));
         });
 
         oauth.realm(REALM_NAME);
@@ -881,7 +955,7 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         json = (new ClientPoliciesBuilder()).addPolicy(
                 (new ClientPolicyBuilder()).createPolicy(POLICY_NAME, "Den Forste Politikken", Boolean.TRUE)
                         .addCondition(ClientRolesConditionFactory.PROVIDER_ID,
-                                createClientRolesConditionConfig(Arrays.asList(roleBetaName)))
+                                createClientRolesConditionConfig(List.of(roleBetaName)))
                         .addProfile(PROFILE_NAME)
                         .toRepresentation()
         ).toString();
@@ -889,16 +963,12 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
 
         String clientAlphaId = generateSuffixedName("Alpha-App");
         String clientAlphaSecret = "secretAlpha";
-        String cAlphaId = createClientByAdmin(clientAlphaId, (ClientRepresentation clientRep) -> {
-            clientRep.setSecret(clientAlphaSecret);
-        });
+        String cAlphaId = createClientByAdmin(clientAlphaId, (ClientRepresentation clientRep) -> clientRep.setSecret(clientAlphaSecret));
         adminClient.realm(REALM_NAME).clients().get(cAlphaId).roles().create(RoleBuilder.create().name(roleAlphaName).build());
 
         String clientBetaId = generateSuffixedName("Beta-App");
         String clientBetaSecret = "secretBeta";
-        String cBetaId = createClientByAdmin(clientBetaId, (ClientRepresentation clientRep) -> {
-            clientRep.setSecret(clientBetaSecret);
-        });
+        String cBetaId = createClientByAdmin(clientBetaId, (ClientRepresentation clientRep) -> clientRep.setSecret(clientBetaSecret));
         adminClient.realm(REALM_NAME).clients().get(cBetaId).roles().create(RoleBuilder.create().name(roleBetaName).build());
 
         successfulLoginAndLogout(clientAlphaId, clientAlphaSecret);
@@ -915,6 +985,40 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         failLoginWithoutSecureSessionParameter(clientBetaId, ERR_MSG_MISSING_STATE);
 
         successfulLoginAndLogout(clientBetaId, clientBetaSecret, "somenonce", "somestate");
+    }
+
+    // GH issue 37447
+    @Test
+    public void testSecureSessionEnforceExecutorWithAccountConsole() throws Exception {
+        // register profiles
+        String json = (new ClientProfilesBuilder()).addProfile(
+                (new ClientProfileBuilder()).createProfile(PROFILE_NAME, "Den Forste Profilen")
+                        .addExecutor(SecureSessionEnforceExecutorFactory.PROVIDER_ID, null)
+                        .toRepresentation()
+        ).toString();
+        updateProfiles(json);
+
+        // register policies
+        json = (new ClientPoliciesBuilder()).addPolicy(
+                (new ClientPolicyBuilder()).createPolicy(POLICY_NAME, "Den Forste Politikken", Boolean.TRUE)
+                        .addCondition(AnyClientConditionFactory.PROVIDER_ID,
+                                createAnyClientConditionConfig())
+                        .addProfile(PROFILE_NAME)
+                        .toRepresentation()
+        ).toString();
+        updatePolicies(json);
+
+        // Test account-console is loaded successfully when "secure-session-enforce" executor is present
+        oauth.client(Constants.ACCOUNT_CONSOLE_CLIENT_ID)
+                .redirectUri(OAuthClient.AUTH_SERVER_ROOT + "/realms/test/account/")
+                .responseMode(OIDCResponseMode.QUERY.value())
+                .loginForm()
+                .state(KeycloakModelUtils.generateId())
+                .nonce(KeycloakModelUtils.generateId())
+                .codeChallenge(PkceGenerator.s256())
+                .open();
+        loginPage.assertCurrent();
+        Assertions.assertEquals("Sign in to your account", loginPage.getTitleText());
     }
 
     @Test
@@ -1044,13 +1148,11 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
             clientRep.setIdTokenSignedResponseAlg(Algorithm.PS256);
             clientRep.setTokenEndpointAuthSigningAlg(Algorithm.PS256);
         });
-        events.expect(EventType.CLIENT_REGISTER).client(cAppDynamicClientId).user(is(emptyOrNullString())).assertEvent();
+        EventAssertion.assertSuccess(events.poll()).type(EventType.CLIENT_REGISTER).clientId(cAppDynamicClientId).userId(null);
 
         // update dynamically - fail
         try {
-            updateClientDynamically(cAppDynamicClientId, (OIDCClientRepresentation clientRep) -> {
-                clientRep.setIdTokenSignedResponseAlg(Algorithm.RS256);
-            });
+            updateClientDynamically(cAppDynamicClientId, (OIDCClientRepresentation clientRep) -> clientRep.setIdTokenSignedResponseAlg(Algorithm.RS256));
             fail();
         } catch (ClientRegistrationException e) {
             assertEquals(ERR_MSG_CLIENT_REG_FAIL, e.getMessage());
@@ -1058,9 +1160,7 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         assertEquals(Algorithm.PS256, getClientDynamically(cAppDynamicClientId).getIdTokenSignedResponseAlg());
 
         // update dynamically - success
-        updateClientDynamically(cAppDynamicClientId, (OIDCClientRepresentation clientRep) -> {
-            clientRep.setIdTokenSignedResponseAlg(Algorithm.ES384);
-        });
+        updateClientDynamically(cAppDynamicClientId, (OIDCClientRepresentation clientRep) -> clientRep.setIdTokenSignedResponseAlg(Algorithm.ES384));
         assertEquals(Algorithm.ES384, getClientDynamically(cAppDynamicClientId).getIdTokenSignedResponseAlg());
 
         // create dynamically - success, PS256 enforced
@@ -1120,9 +1220,7 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         updatePolicies(json);
 
         try {
-            createClientDynamically(generateSuffixedName(CLIENT_NAME), (OIDCClientRepresentation clientRep) -> {
-                clientRep.setRedirectUris(Collections.singletonList("http://newredirect"));
-            });
+            createClientDynamically(generateSuffixedName(CLIENT_NAME), (OIDCClientRepresentation clientRep) -> clientRep.setRedirectUris(Collections.singletonList("http://newredirect")));
             fail();
         } catch (ClientRegistrationException e) {
             assertEquals(ERR_MSG_CLIENT_REG_FAIL, e.getMessage());
@@ -1158,9 +1256,7 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         updatePolicies(json);
 
         try {
-            updateClientDynamically(clientId, (OIDCClientRepresentation clientRep) -> {
-                clientRep.setRedirectUris(Collections.singletonList("https://newredirect/*"));
-            });
+            updateClientDynamically(clientId, (OIDCClientRepresentation clientRep) -> clientRep.setRedirectUris(Collections.singletonList("https://newredirect/*")));
             fail();
         } catch (ClientRegistrationException e) {
             assertEquals(ERR_MSG_CLIENT_REG_FAIL, e.getMessage());
@@ -1174,14 +1270,14 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
                 clientRep.setAdminUrl("https://client.example.com/admin/");
                 // baseUrl
                 clientRep.setBaseUrl("https://client.example.com/base/");
+                // OAuth2 : redirectUris
+                clientRep.setRedirectUris(Arrays.asList("https://client.example.com/redirect/", "https://client.example.com/callback/"));
                 // web origins
                 clientRep.setWebOrigins(Arrays.asList("https://valid.other.client.example.com/", "https://valid.another.client.example.com/"));
                 // backchannel logout URL
                 Map<String, String> attributes = Optional.ofNullable(clientRep.getAttributes()).orElse(new HashMap<>());
                 attributes.put(OIDCConfigAttributes.BACKCHANNEL_LOGOUT_URL, "https://client.example.com/logout/");
                 clientRep.setAttributes(attributes);
-                // OAuth2 : redirectUris
-                clientRep.setRedirectUris(Arrays.asList("https://client.example.com/redirect/", "https://client.example.com/callback/"));
                 // OAuth2 : jwks_uri
                 attributes.put(OIDCConfigAttributes.JWKS_URL, "https://client.example.com/jwks/");
                 clientRep.setAttributes(attributes);
@@ -1231,7 +1327,7 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         try {
             updateClientByAdmin(cid, (ClientRepresentation clientRep) -> {
                 // web origins
-                clientRep.setWebOrigins(Arrays.asList("http://valid.another.client.example.com/"));
+                clientRep.setWebOrigins(List.of("http://valid.another.client.example.com/"));
             });
             fail();
         } catch (ClientPolicyException e) {
@@ -1299,6 +1395,45 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
             assertEquals(OAuthErrorException.INVALID_CLIENT_METADATA, e.getError());
             assertEquals("Invalid cibaClientNotificationEndpoint", e.getErrorDetail());
         }
+
+        try {
+            updateClientByAdmin(cid, (ClientRepresentation clientRep) -> {
+                // OIDC: logo_uri
+                Map<String, String> attributes = Optional.ofNullable(clientRep.getAttributes()).orElse(new HashMap<>());
+                attributes.put("logoUri", "http://client.example.com/logo/");
+                clientRep.setAttributes(attributes);
+            });
+            fail();
+        } catch (ClientPolicyException e) {
+            assertEquals(OAuthErrorException.INVALID_CLIENT_METADATA, e.getError());
+            assertEquals("Invalid logoUri", e.getErrorDetail());
+        }
+
+        try {
+            updateClientByAdmin(cid, (ClientRepresentation clientRep) -> {
+                // OIDC: tos_uri (Terms of Service)
+                Map<String, String> attributes = Optional.ofNullable(clientRep.getAttributes()).orElse(new HashMap<>());
+                attributes.put("tosUri", "http://client.example.com/tos/");
+                clientRep.setAttributes(attributes);
+            });
+            fail();
+        } catch (ClientPolicyException e) {
+            assertEquals(OAuthErrorException.INVALID_CLIENT_METADATA, e.getError());
+            assertEquals("Invalid tosUri", e.getErrorDetail());
+        }
+
+        try {
+            updateClientByAdmin(cid, (ClientRepresentation clientRep) -> {
+                // OIDC: policy_uri
+                Map<String, String> attributes = Optional.ofNullable(clientRep.getAttributes()).orElse(new HashMap<>());
+                attributes.put("policyUri", "http://client.example.com/policy/");
+                clientRep.setAttributes(attributes);
+            });
+            fail();
+        } catch (ClientPolicyException e) {
+            assertEquals(OAuthErrorException.INVALID_CLIENT_METADATA, e.getError());
+            assertEquals("Invalid policyUri", e.getErrorDetail());
+        }
     }
 
     @Test
@@ -1337,7 +1472,8 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         adminClient.realm(REALM_NAME).clients().get(cid).roles().create(RoleBuilder.create().name(roleCommonName).build());
 
 
-        ClientResource clientResource = ApiUtil.findClientByClientId(adminClient.realm(REALM_NAME), clientId);
+        ClientResource clientResource = AdminApiUtil.findClientByClientId(adminClient.realm(REALM_NAME), clientId);
+        assert clientResource != null;
         ClientRepresentation clientRep = clientResource.toRepresentation();
 
         KeyPair keyPair = setupJwksUrl(Algorithm.ES256, clientRep, clientResource);
@@ -1346,11 +1482,10 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
 
         String signedJwt = createSignedRequestToken(clientId, privateKey, publicKey, Algorithm.ES256);
 
-        oauth.clientId(clientId);
+        oauth.client(clientId);
         oauth.doLogin(TEST_USER_NAME, TEST_USER_PASSWORD);
-        EventRepresentation loginEvent = events.expectLogin()
-                .client(clientId)
-                .assertEvent();
+        EventRepresentation loginEvent = EventAssertion.expectLoginSuccess(events.poll())
+                .clientId(clientId).getEvent();
         String sessionId = loginEvent.getSessionId();
         String code = oauth.parseLoginResponse().getCode();
 
@@ -1360,12 +1495,14 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         assertEquals(200, response.getStatusCode());
         oauth.verifyToken(response.getAccessToken());
         RefreshToken refreshToken = oauth.parseRefreshToken(response.getRefreshToken());
-        assertEquals(sessionId, refreshToken.getSessionState());
-        assertEquals(sessionId, refreshToken.getSessionState());
-        events.expectCodeToToken(loginEvent.getDetails().get(Details.CODE_ID), loginEvent.getSessionId())
-                .client(clientId)
-                .detail(Details.CLIENT_AUTH_METHOD, JWTClientAuthenticator.PROVIDER_ID)
-                .assertEvent();
+        assertEquals(sessionId, refreshToken.getSessionId());
+        assertEquals(sessionId, refreshToken.getSessionId());
+        EventAssertion.expectCodeToTokenSuccess(events.poll())
+                .sessionId(loginEvent.getSessionId())
+                .clientId(clientId)
+                .details(Details.CODE_ID, loginEvent.getDetails().get(Details.CODE_ID))
+                .details(Details.REFRESH_TOKEN_TYPE, TokenUtil.TOKEN_TYPE_REFRESH)
+                .details(Details.CLIENT_AUTH_METHOD, JWTClientAuthenticator.PROVIDER_ID);
 
         // refresh token
         signedJwt = createSignedRequestToken(clientId, privateKey, publicKey, Algorithm.ES256);
@@ -1427,7 +1564,8 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         adminClient.realm(REALM_NAME).clients().get(cid).roles().create(RoleBuilder.create().name(roleAlphaName).build());
         adminClient.realm(REALM_NAME).clients().get(cid).roles().create(RoleBuilder.create().name(roleCommonName).build());
 
-        ClientResource clientResource = ApiUtil.findClientByClientId(adminClient.realm(REALM_NAME), clientId);
+        ClientResource clientResource = AdminApiUtil.findClientByClientId(adminClient.realm(REALM_NAME), clientId);
+        assert clientResource != null;
         ClientRepresentation clientRep = clientResource.toRepresentation();
 
         KeyPair keyPair = setupJwksUrl(Algorithm.RS256, clientRep, clientResource);
@@ -1436,12 +1574,9 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
 
         String signedJwt = createSignedRequestToken(clientId, privateKey, publicKey, Algorithm.RS256);
 
-        oauth.clientId(clientId);
+        oauth.client(clientId);
         oauth.doLogin(TEST_USER_NAME, TEST_USER_PASSWORD);
-        EventRepresentation loginEvent = events.expectLogin()
-                .client(clientId)
-                .assertEvent();
-        String sessionId = loginEvent.getSessionId();
+        EventAssertion.expectLoginSuccess(events.poll()).clientId(clientId);
         String code = oauth.parseLoginResponse().getCode();
 
         // obtain access token
@@ -1506,7 +1641,7 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
 
         ClientPolicyExecutorConfigurationRepresentation config = new ClientPolicyExecutorConfigurationRepresentation();
 
-        config.setConfigAsMap(SecureLogoutExecutorFactory.ALLOW_FRONT_CHANNEL_LOGOUT, Boolean.TRUE.booleanValue());
+        config.setConfigAsMap(SecureLogoutExecutorFactory.ALLOW_FRONT_CHANNEL_LOGOUT, true);
 
         json = (new ClientProfilesBuilder()).addProfile(
                 (new ClientProfileBuilder()).createProfile(PROFILE_NAME, "Logout Test")
@@ -1531,7 +1666,7 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
 
         oauth.logoutForm().idTokenHint(response.getIdToken()).open();
 
-        assertTrue(driver.getPageSource().contains("Front-channel logout is not allowed for this client"));
+        assertTrue(Objects.requireNonNull(driver.getPageSource()).contains("Front-channel logout is not allowed for this client"));
     }
 
     @Test
@@ -1545,9 +1680,7 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         updateProfiles(json);
 
         String clientBetaId = generateSuffixedName("Beta-App");
-        createClientByAdmin(clientBetaId, (ClientRepresentation clientRep) -> {
-            clientRep.setSecret("secretBeta");
-        });
+        createClientByAdmin(clientBetaId, (ClientRepresentation clientRep) -> clientRep.setSecret("secretBeta"));
 
         // register policies
         json = (new ClientPoliciesBuilder()).addPolicy(
@@ -1569,11 +1702,13 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         oauth.client(clientBetaId);
         oauth.loginForm().state("randomstatesomething").requestUri(requestUri).open();
         assertTrue(errorPage.isCurrent());
-        assertEquals("PAR request did not include necessary parameters", errorPage.getError());
-        events.expectClientPolicyError(EventType.LOGIN_ERROR, OAuthErrorException.INVALID_REQUEST,
-                        Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST,
-                        "PAR request did not include necessary parameters").client((String) null)
-                .user((String) null).assertEvent();
+        assertEquals("PAR request did not include query parameter", errorPage.getError());
+        EventAssertion.assertError(events.poll())
+                .type(EventType.LOGIN_ERROR).error(OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.REASON, Details.CLIENT_POLICY_ERROR)
+                .details(Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.CLIENT_POLICY_ERROR_DETAIL, "PAR request did not include query parameter").clientId(null)
+                .userId(null);
 
         oauth.client(clientBetaId, "secretBeta");
         pResp = oauth.doPushedAuthorizationRequest();
@@ -1618,11 +1753,13 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         // only query parameters include state parameter
         oauth.loginForm().requestUri(requestUri).state("mystate2").open();
         assertTrue(errorPage.isCurrent());
-        assertEquals("PAR request did not include necessary parameters", errorPage.getError());
-        events.expectClientPolicyError(EventType.LOGIN_ERROR, OAuthErrorException.INVALID_REQUEST,
-                        Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST,
-                        "PAR request did not include necessary parameters").client((String) null)
-                .user((String) null).assertEvent();
+        assertEquals("PAR request did not include query parameter", errorPage.getError());
+        EventAssertion.assertError(events.poll())
+                .type(EventType.LOGIN_ERROR).error(OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.REASON, Details.CLIENT_POLICY_ERROR)
+                .details(Details.CLIENT_POLICY_ERROR, OAuthErrorException.INVALID_REQUEST_OBJECT)
+                .details(Details.CLIENT_POLICY_ERROR_DETAIL, "PAR request did not include query parameter").clientId(null)
+                .userId(null);
 
         // Pushed Authorization Request with state parameter
         oidcClientEndpointsResource.setOIDCRequest(REALM_NAME, TEST_CLIENT, oauth.getRedirectUri(), "10", "mystate2", "none");
@@ -1636,5 +1773,331 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
         this.requestUri = requestUri;
         successfulLoginAndLogout(TEST_CLIENT, TEST_CLIENT_SECRET);
 
+    }
+
+    @Test
+    public void testSecureClientAuthenticationAssertionExecutor() throws Exception {
+        // register profiles
+        String json = (new ClientProfilesBuilder()).addProfile(
+                (new ClientProfileBuilder()).createProfile(PROFILE_NAME, "Le Premier Profil")
+                        .addExecutor(SecureClientAuthenticationAssertionExecutorFactory.PROVIDER_ID, null)
+                        .toRepresentation()
+        ).toString();
+        updateProfiles(json);
+
+        // register policies
+        json = (new ClientPoliciesBuilder()).addPolicy(
+                (new ClientPolicyBuilder()).createPolicy(POLICY_NAME, "La Premiere Politique", Boolean.TRUE)
+                        .addCondition(AnyClientConditionFactory.PROVIDER_ID,
+                                createAnyClientConditionConfig())
+                        .addProfile(PROFILE_NAME)
+                        .toRepresentation()
+        ).toString();
+        updatePolicies(json);
+
+        // Register client with private-key-jwt
+        String clientId = generateSuffixedName(CLIENT_NAME);
+        createClientByAdmin(clientId, (ClientRepresentation clientRep) -> clientRep.setClientAuthenticatorType(JWTClientAuthenticator.PROVIDER_ID));
+
+        ClientResource clientResource = AdminApiUtil.findClientByClientId(adminClient.realm(REALM_NAME), clientId);
+        assert clientResource != null;
+        ClientRepresentation clientRep = clientResource.toRepresentation();
+
+        oauth.client(clientId);
+
+        // Get keys of client. Will be used for client authentication and signing of request object
+        KeyPair keyPair = setupJwksUrl(Algorithm.RS256, clientRep, clientResource);
+        PublicKey publicKey = keyPair.getPublic();
+        PrivateKey privateKey = keyPair.getPrivate();
+
+        // Send a push authorization request with invalid 'aud' . Should fail
+        String[] audienceUrls = {getRealmInfoUrl(), getRealmInfoUrl() + "/protocol/openid-connect/ext/par/request"};
+        String signedJwt = createSignedRequestToken(clientId, privateKey, publicKey, Algorithm.RS256, audienceUrls);
+        //     for the test, allow multiple audiences for JWT client authentication temporarily.
+        allowMultipleAudiencesForClientJWTOnServer(true);
+        ParResponse pResp = null;
+        try {
+            pResp = oauth.pushedAuthorizationRequest().request(request).signedJwt(signedJwt).send();
+        } finally {
+            allowMultipleAudiencesForClientJWTOnServer(false);
+        }
+        assertEquals(400, pResp.getStatusCode());
+        assertEquals(OAuthErrorException.INVALID_REQUEST, pResp.getError());
+
+        signedJwt = createSignedRequestToken(clientId, privateKey, publicKey, Algorithm.RS256, getRealmInfoUrl() + "/protocol/openid-connect/ext/par/request");
+        pResp = oauth.pushedAuthorizationRequest().request(request).signedJwt(signedJwt).send();
+        assertEquals(400, pResp.getStatusCode());
+        assertEquals(OAuthErrorException.INVALID_REQUEST, pResp.getError());
+
+        // Send a push authorization request with valid 'aud' . Should succeed
+        signedJwt = createSignedRequestToken(clientId, privateKey, publicKey, Algorithm.RS256, getRealmInfoUrl());
+        pResp = oauth.pushedAuthorizationRequest().request(request).signedJwt(signedJwt).send();
+        assertEquals(201, pResp.getStatusCode());
+        requestUri = pResp.getRequestUri();
+
+        // Send an authorization request . Should succeed
+        AuthorizationEndpointResponse loginResponse = oauth.loginForm().requestUri(requestUri).doLogin(TEST_USER_NAME, TEST_USER_PASSWORD);
+        String code = loginResponse.getCode();
+        assertNotNull(code);
+
+        // Send a token request with invalid 'aud' . Should fail
+        signedJwt = createSignedRequestToken(clientId, privateKey, publicKey, Algorithm.RS256, getRealmInfoUrl() + "/protocol/openid-connect/token");
+        AccessTokenResponse tokenResponse = doAccessTokenRequestWithClientSignedJWT(code, signedJwt, DefaultHttpClient::new);
+        assertEquals(400, tokenResponse.getStatusCode());
+
+        // Send a token request with valid 'aud' . Should succeed
+        UserResource user = AdminApiUtil.findUserByUsernameId(adminClient.realm(REALM_NAME), TEST_USER_NAME);
+        user.logout();
+
+        loginResponse = oauth.loginForm().doLogin(TEST_USER_NAME, TEST_USER_PASSWORD);
+        code = loginResponse.getCode();
+
+        signedJwt = createSignedRequestToken(clientId, privateKey, publicKey, Algorithm.RS256, getRealmInfoUrl());
+
+        tokenResponse = doAccessTokenRequestWithClientSignedJWT(code, signedJwt, DefaultHttpClient::new);
+        assertEquals(200, tokenResponse.getStatusCode());
+        MatcherAssert.assertThat(tokenResponse.getAccessToken(), Matchers.notNullValue());
+
+        // Send a token refresh request with invalid 'aud' . Should fail
+        signedJwt = createSignedRequestToken(clientId, privateKey, publicKey, Algorithm.RS256, getRealmInfoUrl() + "/protocol/openid-connect/token");
+        AccessTokenResponse refreshedResponse = doRefreshTokenRequestWithSignedJWT(tokenResponse.getRefreshToken(), signedJwt);
+        assertEquals(400, refreshedResponse.getStatusCode());
+
+        // Send a token refresh request with valid 'aud' . Should succeed
+        signedJwt = createSignedRequestToken(clientId, privateKey, publicKey, Algorithm.RS256, getRealmInfoUrl());
+        refreshedResponse = doRefreshTokenRequestWithSignedJWT(tokenResponse.getRefreshToken(), signedJwt);
+        assertEquals(200, refreshedResponse.getStatusCode());
+
+        // Send a token introspection request with invalid 'aud' . Should fail
+        signedJwt = createSignedRequestToken(clientId, privateKey, publicKey, Algorithm.RS256, getRealmInfoUrl() + "/protocol/openid-connect/introspect");
+        HttpResponse tokenIntrospectionResponse = doTokenIntrospectionWithSignedJWT("access_token", refreshedResponse.getAccessToken(), signedJwt);
+        assertEquals(400, tokenIntrospectionResponse.getStatusLine().getStatusCode());
+
+        // Send a token introspection request with valid 'aud' . Should succeed
+        signedJwt = createSignedRequestToken(clientId, privateKey, publicKey, Algorithm.RS256, getRealmInfoUrl());
+        tokenIntrospectionResponse = doTokenIntrospectionWithSignedJWT("access_token", refreshedResponse.getAccessToken(), signedJwt);
+        assertEquals(200, tokenIntrospectionResponse.getStatusLine().getStatusCode());
+
+        // Send a token revoke request with invalid 'aud' . Should fail
+        signedJwt = createSignedRequestToken(clientId, privateKey, publicKey, Algorithm.RS256, getRealmInfoUrl() + "/protocol/openid-connect/revoke");
+        HttpResponse revokeTokenResponse = doTokenRevokeWithSignedJWT("refresh_token", refreshedResponse.getRefreshToken(), signedJwt);
+        assertEquals(400, revokeTokenResponse.getStatusLine().getStatusCode());
+
+        // Send a token revoke request with valid 'aud' . Should succeed
+        signedJwt = createSignedRequestToken(clientId, privateKey, publicKey, Algorithm.RS256, getRealmInfoUrl());
+        revokeTokenResponse = doTokenRevokeWithSignedJWT("refresh_token", refreshedResponse.getRefreshToken(), signedJwt);
+        assertEquals(200, revokeTokenResponse.getStatusLine().getStatusCode());
+    }
+
+    private String createSignedRequestToken(String clientId, PrivateKey privateKey, PublicKey publicKey, String algorithm, String audUrl) {
+        JsonWebToken jwt = createRequestToken(clientId, audUrl);
+        String kid = KeyUtils.createKeyId(publicKey);
+        SignatureSignerContext signer = SignatureSignerUtil.createSigner(privateKey, kid, algorithm);
+        return new JWSBuilder().kid(kid).jsonContent(jwt).sign(signer);
+    }
+
+    private String createSignedRequestToken(String clientId, PrivateKey privateKey, PublicKey publicKey, String algorithm, String[] audienceUrls) {
+        JsonWebToken jwt = createRequestToken(clientId, audienceUrls);
+        String kid = KeyUtils.createKeyId(publicKey);
+        SignatureSignerContext signer = SignatureSignerUtil.createSigner(privateKey, kid, algorithm);
+        return new JWSBuilder().kid(kid).jsonContent(jwt).sign(signer);
+    }
+
+    private AccessTokenResponse doAccessTokenRequestWithClientSignedJWT(String code, String signedJwt, Supplier<CloseableHttpClient> httpClientSupplier) {
+        try {
+            List<NameValuePair> parameters = new LinkedList<>();
+            parameters.add(new BasicNameValuePair(OAuth2Constants.GRANT_TYPE, OAuth2Constants.AUTHORIZATION_CODE));
+            parameters.add(new BasicNameValuePair(OAuth2Constants.CODE, code));
+
+            parameters.add(new BasicNameValuePair(OAuth2Constants.REDIRECT_URI, oauth.getRedirectUri()));
+            parameters.add(new BasicNameValuePair(OAuth2Constants.CLIENT_ASSERTION_TYPE, OAuth2Constants.CLIENT_ASSERTION_TYPE_JWT));
+            parameters.add(new BasicNameValuePair(OAuth2Constants.CLIENT_ASSERTION, signedJwt));
+
+            CloseableHttpResponse response = sendRequest(oauth.getEndpoints().getToken(), parameters, httpClientSupplier);
+            return new AccessTokenResponse(response);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private CloseableHttpResponse sendRequest(String requestUrl, List<NameValuePair> parameters, Supplier<CloseableHttpClient> httpClientSupplier) throws Exception {
+        try (CloseableHttpClient client = httpClientSupplier.get()) {
+            HttpPost post = new HttpPost(requestUrl);
+            UrlEncodedFormEntity formEntity = new UrlEncodedFormEntity(parameters, StandardCharsets.UTF_8);
+            post.setEntity(formEntity);
+            return client.execute(post);
+        }
+    }
+
+    @Test
+    public void testSecureClientRegisteringUriEnforceExecutorWithRedirectWildcard() throws Exception {
+        // register profiles
+        String json = (new ClientProfilesBuilder()).addProfile(
+                (new ClientProfileBuilder()).createProfile(PROFILE_NAME, "Ensimmainen Profiili")
+                        .addExecutor(SecureClientUrisExecutorFactory.PROVIDER_ID, null)
+                        .toRepresentation()
+        ).toString();
+        updateProfiles(json);
+
+        // register policies
+        json = (new ClientPoliciesBuilder()).addPolicy(
+                (new ClientPolicyBuilder()).createPolicy(POLICY_NAME, "Ensimmainen Politiikka", Boolean.TRUE)
+                        .addCondition(ClientUpdaterContextConditionFactory.PROVIDER_ID,
+                                createClientUpdateContextConditionConfig(Arrays.asList(
+                                        ClientUpdaterContextConditionFactory.BY_AUTHENTICATED_USER,
+                                        ClientUpdaterContextConditionFactory.BY_INITIAL_ACCESS_TOKEN,
+                                        ClientUpdaterContextConditionFactory.BY_REGISTRATION_ACCESS_TOKEN)))
+                        .addProfile(PROFILE_NAME)
+                        .toRepresentation()
+        ).toString();
+        updatePolicies(json);
+
+
+        String cid = null;
+        String clientId = generateSuffixedName(CLIENT_NAME);
+        try {
+            cid = createClientByAdmin(clientId, (ClientRepresentation clientRep) -> {
+                clientRep.setServiceAccountsEnabled(Boolean.TRUE);
+                clientRep.setRedirectUris(List.of("https://client.example.com/redirect/"));
+            });
+        } catch (Exception e) {
+            fail();
+        }
+
+        try {  // Redirect relative wildcard - '+' as single value
+            updateClientByAdmin(cid, (ClientRepresentation clientRep) -> {
+                // rootUrl
+                clientRep.setRootUrl("https://client.example.com/");
+                // adminUrl
+                clientRep.setAdminUrl("https://client.example.com/admin/");
+                // baseUrl
+                clientRep.setBaseUrl("https://client.example.com/base/");
+                // OAuth2 : redirectUris
+                clientRep.setRedirectUris(Arrays.asList("https://client.example.com/redirect/", "https://client.example.com/callback/"));
+                // web origins
+                clientRep.setWebOrigins(List.of("+"));
+                // backchannel logout URL
+                Map<String, String> attributes = Optional.ofNullable(clientRep.getAttributes()).orElse(new HashMap<>());
+                attributes.put(OIDCConfigAttributes.BACKCHANNEL_LOGOUT_URL, "https://client.example.com/logout/");
+                clientRep.setAttributes(attributes);
+                // OIDC: postLogoutUris
+                setAttributeMultivalued(clientRep, OIDCConfigAttributes.POST_LOGOUT_REDIRECT_URIS, List.of("+"));
+                // OAuth2 : jwks_uri
+                attributes.put(OIDCConfigAttributes.JWKS_URL, "https://client.example.com/jwks/");
+                clientRep.setAttributes(attributes);
+                // OIDC : requestUris
+                setAttributeMultivalued(clientRep, OIDCConfigAttributes.REQUEST_URIS, Arrays.asList("https://client.example.com/request/", "https://client.example.com/reqobj/"));
+                // CIBA Client Notification Endpoint
+                attributes.put(CibaConfig.CIBA_BACKCHANNEL_CLIENT_NOTIFICATION_ENDPOINT, "https://client.example.com/client-notification/");
+                clientRep.setAttributes(attributes);
+            });
+        } catch (Exception e) {
+            fail();
+        }
+
+        try { // Redirect relative wildcard - '+' with multiple values
+            updateClientByAdmin(cid, (ClientRepresentation clientRep) -> {
+                // rootUrl
+                clientRep.setRootUrl("https://client.example.com/");
+                // adminUrl
+                clientRep.setAdminUrl("https://client.example.com/admin/");
+                // baseUrl
+                clientRep.setBaseUrl("https://client.example.com/base/");
+                // OAuth2 : redirectUris
+                clientRep.setRedirectUris(List.of("https://client.example.com/redirect/"));
+                // web origins
+                clientRep.setWebOrigins(Arrays.asList("https://valid.other.client.example.com/", "https://valid.another.client.example.com/", "+"));
+                // backchannel logout URL
+                Map<String, String> attributes = Optional.ofNullable(clientRep.getAttributes()).orElse(new HashMap<>());
+                attributes.put(OIDCConfigAttributes.BACKCHANNEL_LOGOUT_URL, "https://client.example.com/logout/");
+                clientRep.setAttributes(attributes);
+                // OIDC: postLogoutUris
+                setAttributeMultivalued(clientRep, OIDCConfigAttributes.POST_LOGOUT_REDIRECT_URIS, Arrays.asList("https://client.example.com/postlogout/", "+"));
+                // OAuth2 : jwks_uri
+                attributes.put(OIDCConfigAttributes.JWKS_URL, "https://client.example.com/jwks/");
+                clientRep.setAttributes(attributes);
+                // OIDC : requestUris
+                setAttributeMultivalued(clientRep, OIDCConfigAttributes.REQUEST_URIS, Arrays.asList("https://client.example.com/request/", "https://client.example.com/reqobj/"));
+                // CIBA Client Notification Endpoint
+                attributes.put(CibaConfig.CIBA_BACKCHANNEL_CLIENT_NOTIFICATION_ENDPOINT, "https://client.example.com/client-notification/");
+                clientRep.setAttributes(attributes);
+            });
+        } catch (Exception e) {
+            fail();
+        }
+
+        try { // Redirect relative wildcard - '+' with no redirect value added
+            updateClientByAdmin(cid, (ClientRepresentation clientRep) -> {
+                // rootUrl
+                clientRep.setRootUrl("https://client.example.com/");
+                // adminUrl
+                clientRep.setAdminUrl("https://client.example.com/admin/");
+                // baseUrl
+                clientRep.setBaseUrl("https://client.example.com/base/");
+                // OAuth2 : redirectUris
+                clientRep.setRedirectUris(null);
+                // web origins
+                clientRep.setWebOrigins(Arrays.asList("+", "https://valid.other.client.example.com/"));
+                // backchannel logout URL
+                Map<String, String> attributes = Optional.ofNullable(clientRep.getAttributes()).orElse(new HashMap<>());
+                attributes.put(OIDCConfigAttributes.BACKCHANNEL_LOGOUT_URL, "https://client.example.com/logout/");
+                clientRep.setAttributes(attributes);
+                // OIDC: postLogoutUris
+                setAttributeMultivalued(clientRep, OIDCConfigAttributes.POST_LOGOUT_REDIRECT_URIS, Arrays.asList("https://client.example.com/postlogout/", "+"));
+                // OAuth2 : jwks_uri
+                attributes.put(OIDCConfigAttributes.JWKS_URL, "https://client.example.com/jwks/");
+                clientRep.setAttributes(attributes);
+                // OIDC : requestUris
+                setAttributeMultivalued(clientRep, OIDCConfigAttributes.REQUEST_URIS, Arrays.asList("https://client.example.com/request/", "https://client.example.com/reqobj/"));
+                // CIBA Client Notification Endpoint
+                attributes.put(CibaConfig.CIBA_BACKCHANNEL_CLIENT_NOTIFICATION_ENDPOINT, "https://client.example.com/client-notification/");
+                clientRep.setAttributes(attributes);
+            });
+        } catch (Exception e) {
+            fail();
+        }
+    }
+
+    @Test
+    public void testTlsClientAuthCASubjectDNExecutor() throws Exception {
+        // register profiles
+        ClientPolicyExecutorConfigurationRepresentation config = new ClientPolicyExecutorConfigurationRepresentation();
+        config.setConfigAsMap(TlsClientAuthCASubjectDNExecutorFactory.CA_SUBJECT_DN, "CN=CA");
+        config.setConfigAsMap(TlsClientAuthCASubjectDNExecutorFactory.ENFORCED, Boolean.TRUE.toString());
+        String json = (new ClientProfilesBuilder()).addProfile(
+                (new ClientProfileBuilder()).createProfile(PROFILE_NAME, "Ensimmainen Profiili")
+                        .addExecutor(TlsClientAuthCASubjectDNExecutorFactory.PROVIDER_ID, config)
+                        .toRepresentation()
+        ).toString();
+        updateProfiles(json);
+
+        // register policies
+        json = (new ClientPoliciesBuilder()).addPolicy(
+                (new ClientPolicyBuilder()).createPolicy(POLICY_NAME, "Ensimmainen Politiikka", Boolean.TRUE)
+                        .addCondition(ClientUpdaterContextConditionFactory.PROVIDER_ID,
+                                createClientUpdateContextConditionConfig(Arrays.asList(
+                                        ClientUpdaterContextConditionFactory.BY_AUTHENTICATED_USER,
+                                        ClientUpdaterContextConditionFactory.BY_INITIAL_ACCESS_TOKEN,
+                                        ClientUpdaterContextConditionFactory.BY_REGISTRATION_ACCESS_TOKEN)))
+                        .addProfile(PROFILE_NAME)
+                        .toRepresentation()
+        ).toString();
+        updatePolicies(json);
+
+        // create should add the default CA name
+        String clientId = createClientDynamically(generateSuffixedName(CLIENT_NAME), (OIDCClientRepresentation clientRep) -> {
+            clientRep.setTokenEndpointAuthMethod(OIDCLoginProtocol.TLS_CLIENT_AUTH);
+            clientRep.setTlsClientAuthSubjectDn("CN=client");
+        });
+        EventAssertion.assertSuccess(events.poll()).type(EventType.CLIENT_REGISTER).clientId(clientId).userId(null);
+        OIDCClientRepresentation createdRep = getClientDynamically(clientId);
+        EventAssertion.assertSuccess(events.poll()).type(EventType.CLIENT_INFO).clientId(clientId).userId(null);
+        assertEquals(OIDCLoginProtocol.TLS_CLIENT_AUTH, createdRep.getTokenEndpointAuthMethod());
+        assertEquals("CN=client", createdRep.getTlsClientAuthSubjectDn());
+        ClientRepresentation client = AdminApiUtil.findClientByClientId(adminClient.realm(REALM_NAME), clientId).toRepresentation();
+        assertEquals(X509ClientAuthenticator.PROVIDER_ID, client.getClientAuthenticatorType());
+        assertEquals("CN=client", client.getAttributes().get(X509ClientAuthenticator.ATTR_SUBJECT_DN));
+        assertEquals("CN=CA", client.getAttributes().get(X509ClientAuthenticator.ATTR_CA_SUBJECT_DN));
+        assertEquals("false", client.getAttributes().get(X509ClientAuthenticator.ATTR_ALLOW_REGEX_PATTERN_COMPARISON));
     }
 }
