@@ -11,6 +11,7 @@
       "command": "rollup --config && pnpm build:rewrite-import",
       "files": [
         "rollup.config.js",
+        "scripts",
         "src"
       ],
       "output": [
