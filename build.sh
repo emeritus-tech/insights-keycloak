@@ -25,7 +25,67 @@ export PATH=$JAVA_HOME/bin:$PATH
 echo "--2-- $(which javac)"
 echo "--3-- $(readlink -f $( which javac ))"
 
+# Rollup already emits `export { M as Suspense, ... }`. A leftover
+# `export const Children=...` is a SyntaxError and hangs the Admin Console.
+# Fix every packaged themes-vendor JAR so CI/prod never ships a broken file.
+fix_react_vendor_jars() {
+  local vendor_path="theme/keycloak/common/resources/vendor/react/react.production.min.js"
+  local named_exports="Children=e.Children,Component=e.Component,Fragment=e.Fragment,Profiler=e.Profiler,PureComponent=e.PureComponent,StrictMode=e.StrictMode,Suspense=e.Suspense,cloneElement=e.cloneElement,createContext=e.createContext,createElement=e.createElement,createRef=e.createRef,forwardRef=e.forwardRef,isValidElement=e.isValidElement,lazy=e.lazy,memo=e.memo,startTransition=e.startTransition,use=e.use,useCallback=e.useCallback,useContext=e.useContext,useDebugValue=e.useDebugValue,useDeferredValue=e.useDeferredValue,useEffect=e.useEffect,useId=e.useId,useImperativeHandle=e.useImperativeHandle,useInsertionEffect=e.useInsertionEffect,useLayoutEffect=e.useLayoutEffect,useMemo=e.useMemo,useReducer=e.useReducer,useRef=e.useRef,useState=e.useState,useSyncExternalStore=e.useSyncExternalStore,useTransition=e.useTransition,version=e.version"
+  local jar work vendor fixed
+  local found=0
+
+  while IFS= read -r jar; do
+    found=1
+    work=$(mktemp -d)
+    unzip -p "$jar" "$vendor_path" > "$work/react.production.min.js" || {
+      echo "ERROR: $vendor_path not found in $jar"
+      rm -rf "$work"
+      exit 1
+    }
+
+    python3 - "$work/react.production.min.js" "$named_exports" <<'PY'
+import pathlib, re, sys
+path = pathlib.Path(sys.argv[1])
+named = sys.argv[2]
+text = path.read_text()
+dup_re = re.compile(r"\n?export const Children=e\.Children[^\n]*\n?$")
+has_rollup = bool(re.search(r"\bas Suspense\b", text))
+has_dup = bool(dup_re.search(text))
+if has_rollup and has_dup:
+    text = dup_re.sub("\n", text)
+elif not has_rollup and "export const Suspense" not in text:
+    text = f"{text}export const {named};"
+path.write_text(text)
+PY
+
+    vendor=$(cat "$work/react.production.min.js")
+    if ! printf '%s' "$vendor" | grep -qE 'as Suspense|export const Suspense'; then
+      echo "ERROR: could not add Suspense named export in $jar"
+      rm -rf "$work"
+      exit 1
+    fi
+    if printf '%s' "$vendor" | grep -qE 'as Suspense' && printf '%s' "$vendor" | grep -q 'export const Children'; then
+      echo "ERROR: could not remove duplicate React exports in $jar"
+      rm -rf "$work"
+      exit 1
+    fi
+
+    mkdir -p "$work/theme/keycloak/common/resources/vendor/react"
+    cp "$work/react.production.min.js" "$work/$vendor_path"
+    (cd "$work" && jar uf "$jar" "$vendor_path")
+    echo "React vendor JAR fixed/verified: $jar"
+    rm -rf "$work"
+  done < <(find quarkus/server/target/lib js/themes-vendor/target -name "*keycloak-themes-vendor*.jar" 2>/dev/null)
+
+  if [ "$found" -eq 0 ]; then
+    echo "ERROR: keycloak-themes-vendor JAR not found after Maven build"
+    exit 1
+  fi
+}
+
 ./mvnw -pl quarkus/deployment,quarkus/dist,themes, -am -DskipTests clean install | tee log-$(date +%H-%M-%y-%m-%d).txt
+
+fix_react_vendor_jars
 
 echo "Running build command for MSQL database"
 
