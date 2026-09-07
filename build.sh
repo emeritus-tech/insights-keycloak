@@ -31,7 +31,7 @@ echo "--3-- $(readlink -f $( which javac ))"
 fix_react_vendor_jars() {
   local vendor_path="theme/keycloak/common/resources/vendor/react/react.production.min.js"
   local named_exports="Children=e.Children,Component=e.Component,Fragment=e.Fragment,Profiler=e.Profiler,PureComponent=e.PureComponent,StrictMode=e.StrictMode,Suspense=e.Suspense,cloneElement=e.cloneElement,createContext=e.createContext,createElement=e.createElement,createRef=e.createRef,forwardRef=e.forwardRef,isValidElement=e.isValidElement,lazy=e.lazy,memo=e.memo,startTransition=e.startTransition,use=e.use,useCallback=e.useCallback,useContext=e.useContext,useDebugValue=e.useDebugValue,useDeferredValue=e.useDeferredValue,useEffect=e.useEffect,useId=e.useId,useImperativeHandle=e.useImperativeHandle,useInsertionEffect=e.useInsertionEffect,useLayoutEffect=e.useLayoutEffect,useMemo=e.useMemo,useReducer=e.useReducer,useRef=e.useRef,useState=e.useState,useSyncExternalStore=e.useSyncExternalStore,useTransition=e.useTransition,version=e.version"
-  local jar work vendor fixed
+  local jar work
   local found=0
 
   while IFS= read -r jar; do
@@ -58,13 +58,12 @@ elif not has_rollup and "export const Suspense" not in text:
 path.write_text(text)
 PY
 
-    vendor=$(cat "$work/react.production.min.js")
-    if ! printf '%s' "$vendor" | grep -qE 'as Suspense|export const Suspense'; then
+    if ! grep -qE 'as Suspense|export const Suspense' "$work/react.production.min.js"; then
       echo "ERROR: could not add Suspense named export in $jar"
       rm -rf "$work"
       exit 1
     fi
-    if printf '%s' "$vendor" | grep -qE 'as Suspense' && printf '%s' "$vendor" | grep -q 'export const Children'; then
+    if grep -qE 'as Suspense' "$work/react.production.min.js" && grep -q 'export const Children' "$work/react.production.min.js"; then
       echo "ERROR: could not remove duplicate React exports in $jar"
       rm -rf "$work"
       exit 1
@@ -83,7 +82,8 @@ PY
   fi
 }
 
-./mvnw -pl quarkus/deployment,quarkus/dist,themes, -am -DskipTests clean install | tee log-$(date +%H-%M-%y-%m-%d).txt
+./mvnw -pl quarkus/deployment,quarkus/dist,themes, -am -DskipTests clean install 2>&1 | tee "log-$(date +%H-%M-%y-%m-%d).txt"
+test "${PIPESTATUS[0]}" -eq 0
 
 fix_react_vendor_jars
 
