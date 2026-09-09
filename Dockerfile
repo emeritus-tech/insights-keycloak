@@ -23,4 +23,4 @@ COPY / /app/
 EXPOSE 8080
 
 # Command to start Keycloak
-CMD ["sh", "-c", "exec java -Dkc.home.dir=/app/quarkus/server/target --enable-preview -jar /app/quarkus/server/target/lib/quarkus-run.jar start --spi-migration-strategy update --spi-datastore-legacy-allow-migrate-existing-database-to-snapshot true --db mysql --db-username \"$DB_USERNAME\" --db-password \"$DB_PASSWORD\" --hostname \"$HOSTNAME\" --db-url-host \"$DB_HOST\" --proxy-headers xforwarded --db-url-database \"$DB_NAME\" --cache ispn --cache-stack kubernetes"]
+CMD ["sh", "-c", "exec java -Dkc.home.dir=/app/quarkus/server/target --enable-preview -jar /app/quarkus/server/target/lib/quarkus-run.jar start --optimized --spi-migration-strategy=update --spi-datastore-legacy-allow-migrate-existing-database-to-snapshot=true --db=mysql --db-username=\"$DB_USERNAME\" --db-password=\"$DB_PASSWORD\" --hostname=\"$HOSTNAME\" --hostname-strict=false --http-enabled=true --db-url-host=\"$DB_HOST\" --proxy-headers=xforwarded --db-url-database=\"$DB_NAME\" --cache=ispn --cache-stack=kubernetes"]
