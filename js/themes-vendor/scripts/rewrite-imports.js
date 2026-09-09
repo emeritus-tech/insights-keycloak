@@ -1,17 +1,25 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import {
+  APPENDED_SUSPENSE_EXPORT,
+  DUPLICATE_EXPORT_RE,
+  JSX_RUNTIME_FILE,
+  JSX_RUNTIME_REPLACE,
+  JSX_RUNTIME_SEARCH,
+  REACT_NAMED_EXPORTS,
+  REACT_VENDOR_FILE,
+  ROLLUP_SUSPENSE_EXPORT_RE,
+  TARGET_DIR,
+} from "./react-vendor-constants.js";
+import { reactVendorInvalidError } from "./react-vendor-messages.js";
 
-const targetDir = "target/classes/theme/keycloak/common/resources/vendor";
-
-replaceContents(
-  path.join(targetDir, "react/react-jsx-runtime.production.min.js"),
-  '"./react.production.min.js"',
-  '"react"',
+await replaceContents(
+  path.join(TARGET_DIR, JSX_RUNTIME_FILE),
+  JSX_RUNTIME_SEARCH,
+  JSX_RUNTIME_REPLACE,
 );
 
-// Add named exports to the react vendor wrapper so Vite-built code can use
-// named imports like `import { Suspense } from 'react'`.
-addNamedExports(path.join(targetDir, "react/react.production.min.js"));
+await ensureReactNamedExports(path.join(TARGET_DIR, REACT_VENDOR_FILE));
 
 async function replaceContents(filePath, search, replace) {
   const file = await fs.readFile(filePath, "utf8");
@@ -19,19 +27,32 @@ async function replaceContents(filePath, search, replace) {
   await fs.writeFile(filePath, newFile);
 }
 
-async function addNamedExports(filePath) {
-  const file = await fs.readFile(filePath, "utf8");
-  if (file.includes("export const Suspense")) return; // already patched
+/**
+ * Admin Console imports `import { Suspense } from 'react'`.
+ * Rollup usually already emits `export { M as Suspense, ... }`.
+ * An extra `export const Suspense=...` is a SyntaxError and leaves the UI
+ * on "Loading the Administration Console".
+ */
+async function ensureReactNamedExports(filePath) {
+  let file = await fs.readFile(filePath, "utf8");
+  const hasRollupNamed = ROLLUP_SUSPENSE_EXPORT_RE.test(file);
+  const hasAppendedNamed = DUPLICATE_EXPORT_RE.test(file);
 
-  const namedExports = [
-    "Children", "Component", "Fragment", "Profiler", "PureComponent",
-    "StrictMode", "Suspense", "cloneElement", "createContext", "createElement",
-    "createRef", "forwardRef", "isValidElement", "lazy", "memo",
-    "startTransition", "use", "useCallback", "useContext", "useDebugValue",
-    "useDeferredValue", "useEffect", "useId", "useImperativeHandle",
-    "useInsertionEffect", "useLayoutEffect", "useMemo", "useReducer",
-    "useRef", "useState", "useSyncExternalStore", "useTransition", "version",
-  ].map((n) => `${n}=e.${n}`).join(",");
+  if (hasRollupNamed && hasAppendedNamed) {
+    file = file.replace(DUPLICATE_EXPORT_RE, "\n");
+    await fs.writeFile(filePath, file);
+  } else if (!hasRollupNamed && !file.includes(APPENDED_SUSPENSE_EXPORT)) {
+    const namedExports = REACT_NAMED_EXPORTS.map((n) => `${n}=e.${n}`).join(",");
+    await fs.writeFile(filePath, `${file}export const ${namedExports};`);
+  }
 
-  await fs.writeFile(filePath, `${file}export const ${namedExports};`);
+  const result = await fs.readFile(filePath, "utf8");
+  const okNamed = ROLLUP_SUSPENSE_EXPORT_RE.test(result) || result.includes(APPENDED_SUSPENSE_EXPORT);
+  const duplicate = ROLLUP_SUSPENSE_EXPORT_RE.test(result) && DUPLICATE_EXPORT_RE.test(result);
+  if (!okNamed || duplicate) {
+    throw new Error(reactVendorInvalidError({
+      missingSuspense: !okNamed,
+      duplicate,
+    }));
+  }
 }
