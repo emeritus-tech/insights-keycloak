@@ -1,0 +1,46 @@
+name: PR Validations
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+    branches:
+      - main
+
+concurrency:
+  group: pr-validations-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check-pr-title:
+    name: Check PR Title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title format
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          # Expected: [MI-2536] chore(docker): configure optimized keycloak startup
+          # Format:   [JIRA-ID] type(scope): description
+          PATTERN='^\[MI-[0-9]+\] (feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)\([^)]+\): .+$'
+
+          echo "PR title: ${PR_TITLE}"
+
+          if ! echo "${PR_TITLE}" | grep -qE "${PATTERN}"; then
+            echo "::error::PR title does not match the required semantic-release format."
+            echo ""
+            echo "Expected format:"
+            echo "  [MI-1234] type(scope): description"
+            echo ""
+            echo "Allowed types: feat, fix, chore, docs, style, refactor, perf, test, build, ci, revert"
+            echo ""
+            echo "Examples:"
+            echo "  [MI-2536] chore(docker): configure optimized keycloak startup"
+            echo "  [MI-1234] feat(auth): add JWT-based authentication"
+            echo "  [MI-5678] fix(login): resolve crash on profile update"
+            exit 1
+          fi
+
+          echo "PR title format is valid."
